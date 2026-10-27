@@ -23,6 +23,9 @@ keys, tokens, private paths, AdMob IDs or any string listed in the gitignored `c
 A fresh clone needs `git config core.hooksPath .githooks`. Never bypass them; add new app
 identifiers to `config/forbidden.txt` when an app joins.
 
+Tests: `uv run pytest`. Lint and format: `uv run ruff check` and `uv run ruff format` (default
+settings).
+
 Other hard constraints, detailed in `docs/decisions.md`: free only (no billing, no Claude tokens on
 the weekly run), review and feedback text never stored, history kept as numbers only, new packages
 agreed with the author first.

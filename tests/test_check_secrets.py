@@ -34,12 +34,16 @@ class ScanDiffTest(unittest.TestCase):
     def test_every_built_in_pattern_is_caught(self):
         for name, secret in FAKE_SECRETS.items():
             with self.subTest(name):
-                findings = check_secrets.scan_diff(diff_adding("a.txt", "x = " + secret), [])
+                findings = check_secrets.scan_diff(
+                    diff_adding("a.txt", "x = " + secret), []
+                )
                 self.assertEqual(len(findings), 1)
                 self.assertEqual(findings[0].path, "a.txt")
 
     def test_clean_diff_passes(self):
-        self.assertEqual(check_secrets.scan_diff(diff_adding("a.py", "print('hello')"), []), [])
+        self.assertEqual(
+            check_secrets.scan_diff(diff_adding("a.py", "print('hello')"), []), []
+        )
 
     def test_empty_diff_passes(self):
         self.assertEqual(check_secrets.scan_diff("", []), [])
@@ -49,17 +53,26 @@ class ScanDiffTest(unittest.TestCase):
         self.assertEqual(check_secrets.scan_diff(diff, []), [])
 
     def test_placeholder_ids_pass(self):
-        diff = diff_adding("config.example.yaml", "admob_app_id: ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY")
+        diff = diff_adding(
+            "config.example.toml",
+            'admob_app_id = "ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY"',
+        )
         self.assertEqual(check_secrets.scan_diff(diff, []), [])
 
     def test_denylist_entry_is_caught_ignoring_case(self):
-        findings = check_secrets.scan_diff(diff_adding("docs/a.md", "The MyApp report"), ["myapp"])
+        findings = check_secrets.scan_diff(
+            diff_adding("docs/a.md", "The MyApp report"), ["myapp"]
+        )
         self.assertEqual(len(findings), 1)
         self.assertIn("myapp", findings[0].reason)
 
     def test_findings_are_attributed_to_their_file(self):
-        diff = diff_adding("clean.md", "fine") + diff_adding("dirty.md", FAKE_SECRETS["OAuth access token"])
-        self.assertEqual([f.path for f in check_secrets.scan_diff(diff, [])], ["dirty.md"])
+        diff = diff_adding("clean.md", "fine") + diff_adding(
+            "dirty.md", FAKE_SECRETS["OAuth access token"]
+        )
+        self.assertEqual(
+            [f.path for f in check_secrets.scan_diff(diff, [])], ["dirty.md"]
+        )
 
 
 class ScanPathsTest(unittest.TestCase):
@@ -81,7 +94,12 @@ class ScanPathsTest(unittest.TestCase):
                 self.assertEqual(len(check_secrets.scan_paths([path])), 1)
 
     def test_public_paths_pass(self):
-        paths = ["templates/report.html", "config.example.yaml", "src/token_store.py", "docs/decisions.md"]
+        paths = [
+            "templates/report.html",
+            "config.example.toml",
+            "src/token_store.py",
+            "docs/decisions.md",
+        ]
         self.assertEqual(check_secrets.scan_paths(paths), [])
 
     def test_no_paths_pass(self):
@@ -113,7 +131,9 @@ class HookCommandTest(unittest.TestCase):
     def git(self, *args):
         subprocess.run(
             ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
-            cwd=self.repo, check=True, capture_output=True,
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
         )
 
     def stage(self, name, content):
@@ -122,7 +142,12 @@ class HookCommandTest(unittest.TestCase):
 
     def run_script(self, *args, stdin=""):
         return subprocess.run(
-            [sys.executable, str(SCRIPT), *args], cwd=self.repo, input=stdin, capture_output=True, text=True,
+            [sys.executable, str(SCRIPT), *args],
+            check=False,
+            cwd=self.repo,
+            input=stdin,
+            capture_output=True,
+            text=True,
         )
 
     def test_staged_clean_file_passes(self):
@@ -166,7 +191,11 @@ class HookCommandTest(unittest.TestCase):
 
     def push_line(self):
         sha = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=self.repo, check=True, capture_output=True, text=True,
+            ["git", "rev-parse", "HEAD"],
+            cwd=self.repo,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         return f"refs/heads/master {sha} refs/heads/master {'0' * 40}\n"
 

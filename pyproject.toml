@@ -3,4 +3,16 @@ name = "analytics-dashboard"
 version = "0.1.0"
 description = "Weekly metrics report for Android apps"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "google-api-python-client>=2.201.0",
+    "google-auth-oauthlib>=1.5.0",
+    "google-cloud-firestore>=2.34.1",
+    "google-cloud-storage>=3.17.1",
+    "jinja2>=3.1.6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.3",
+]

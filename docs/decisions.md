@@ -38,13 +38,13 @@ weekly report covering every app, built so later apps plug in through config.
   private lives inside the local repo but gitignored: `config/` (the real config, service account
   keys, the OAuth client file, saved refresh token and the app notes), `history/` (weekly numbers,
   including earnings), `out/` (generated HTML and PDF reports, which carry feedback text and users'
-  emails). A `config.example.yaml` with placeholder values is what gets committed. GitHub secret
+  emails). A `config.example.toml` with placeholder values is what gets committed. GitHub secret
   scanning and push protection are on by default for public repos and are a safety net, not the
   plan.
 - **Nothing app-specific in the repo**, docs included: no app names, package names, Firebase
   project IDs, AdMob app, publisher or ad unit IDs, or paths into the apps' own repos. Most of these
   are technically public (they ship in the APK), but the author does not want them published. Code,
-  tests and docs stay generic; `config.example.yaml` and test fixtures use made-up values.
+  tests and docs stay generic; `config.example.toml` and test fixtures use made-up values.
 - **Free.** No paid service, no billing account turned on, no Claude tokens on the weekly path.
 - **Text is never stored.** Review text and feedback text are fetched fresh each run and never
   written to the history folder. The apps promise users their feedback can be deleted on request;
@@ -55,8 +55,14 @@ weekly report covering every app, built so later apps plug in through config.
 - **Config is a list of apps from day one**, even though only one app exists. When a second app
   arrives it gets its own section in the same weekly email (one email, not one per app). Build only
   for one app until then.
-- New packages are a joint decision with the author. The Dart-era agreement on `googleapis` does
-  not carry over to Python; each Python package is agreed before it is added.
+- New packages are a joint decision with the author. Agreed so far: `google-api-python-client`
+  (Play reviews and reporting, AdMob, Gmail), `google-auth-oauthlib` (the one time login as the
+  author), `google-cloud-storage` (Play report bucket), `google-cloud-firestore` (feedback) and
+  `jinja2` (HTML template); `pytest` and `ruff` for development only. Deferred until needed:
+  `google-cloud-bigquery` (only if Crashlytics comes from the BigQuery export) and
+  `google-analytics-data` (phase 2). Not added directly: `requests` (the Google clients pull it in
+  anyway), `pandas`, chart libraries.
+- **Config is TOML**, read with the standard library's `tomllib`, so it needs no package.
 
 ## Phasing
 

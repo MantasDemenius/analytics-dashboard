@@ -32,7 +32,9 @@ PRIVATE_PATH_PATTERNS = {
     "private folder": re.compile(r"^(config|history|out)/"),
     "PDF report": re.compile(r"\.pdf$"),
     "HTML outside templates/": re.compile(r"^(?!templates/).*\.html$"),
-    "key or token file": re.compile(r"(service-account|credentials|client_secret|token)[^/]*\.json$"),
+    "key or token file": re.compile(
+        r"(service-account|credentials|client_secret|token)[^/]*\.json$"
+    ),
     "env file": re.compile(r"(^|/)\.env(\.[^/]*)?$"),
 }
 
@@ -91,7 +93,12 @@ def scan_paths(paths: list[str]) -> list[Finding]:
 
 def git(*args: str) -> str:
     return subprocess.run(
-        ["git", *args], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        ["git", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
 
 
@@ -102,8 +109,18 @@ def scan_staged(denylist: list[str]) -> list[Finding]:
 
 
 def scan_commit(sha: str, denylist: list[str]) -> list[Finding]:
-    paths = git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "--diff-filter=ACMR", sha)
-    diff = git("show", "--format=", "--unified=0", "--no-color", "--diff-filter=ACMR", sha)
+    paths = git(
+        "diff-tree",
+        "--root",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        "--diff-filter=ACMR",
+        sha,
+    )
+    diff = git(
+        "show", "--format=", "--unified=0", "--no-color", "--diff-filter=ACMR", sha
+    )
     message = git("log", "-1", "--format=%B", sha)
     return (
         scan_paths(paths.splitlines())
