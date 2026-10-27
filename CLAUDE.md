@@ -7,8 +7,9 @@ Runs on the author's PC every Monday via Windows Task Scheduler. Apps join throu
 
 **No code exists yet.** Read `docs/decisions.md` before anything else: it holds every decision
 made so far, the rejected options, the unverified facts to check first, and the open questions.
-Then read the gitignored `config/apps.md`, which names the apps and their identifiers. The next
-step is a spec in this folder, starting with a prototype ticket for the HTML design.
+Then read the gitignored `config/apps.md`, which names the apps and their identifiers. Open work
+lives on GitHub: the pinned Roadmap issue lists everything not yet ticketed, and the tickets settle
+the unknowns before a grill and a spec.
 
 **This repo is public** (https://github.com/MantasDemenius/analytics-dashboard). Config, keys,
 tokens, history and generated reports live inside the local repo in gitignored paths
@@ -29,3 +30,20 @@ settings).
 Other hard constraints, detailed in `docs/decisions.md`: free only (no billing, no Claude tokens on
 the weekly run), review and feedback text never stored, history kept as numbers only, new packages
 agreed with the author first.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are GitHub Issues on this public repo, worked with the `gh` CLI. Everything posted
+there is public and must pass the same rules as committed files. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `GLOSSARY.md` and `docs/adr/` at the repo root, created only when first
+needed. See `docs/agents/domain.md`.

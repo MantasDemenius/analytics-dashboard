@@ -2,8 +2,8 @@
 
 Outcome of a grilling session held on 2026-10-27, before this project had any code, and later
 changes made in this repo (the language moved from Dart to Python on the same day). Nothing here is
-specced yet: the next step is a spec written in this folder, starting from these decisions and
-checking the unverified facts at the bottom first.
+specced yet. The unverified facts at the bottom are GitHub tickets, and everything else still to be
+grilled and specced is on the pinned Roadmap issue.
 
 App-specific details (which apps, their package names, Firebase projects, AdMob IDs, where their
 own repos and docs live) are not in this repo. They are in the gitignored `config/apps.md` on the
