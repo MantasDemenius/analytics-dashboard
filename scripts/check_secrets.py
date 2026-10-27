@@ -1,13 +1,18 @@
 """Blocks commits and pushes that would publish keys, private files or app-specific identifiers.
 
-Run by the git hooks in `.githooks/`:
-  check_secrets.py staged   scans what is staged for commit
-  check_secrets.py push     scans every commit a push would publish (pre-push stdin)
+Run by the git hooks in `.githooks/` and the Claude Code hook in `.claude/settings.json`:
+  check_secrets.py staged       scans what is staged for commit
+  check_secrets.py push         scans every commit a push would publish (pre-push stdin)
+  check_secrets.py text [FILE]  scans a file, or stdin, before it is posted anywhere public
+  check_secrets.py gh-hook      scans a `gh issue|pr create|edit|comment` command and its
+                                `--body-file` (PreToolUse event on stdin, exit 2 blocks it)
 
 Literal strings listed in the gitignored `config/forbidden.txt` (one per line) are blocked too.
 """
 
+import json
 import re
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -37,6 +42,12 @@ PRIVATE_PATH_PATTERNS = {
     ),
     "env file": re.compile(r"(^|/)\.env(\.[^/]*)?$"),
 }
+
+
+GH_WRITE_COMMAND = re.compile(r"\bgh(\.exe)?\s+(issue|pr)\s+(create|edit|comment)\b")
+BODY_FILE_FLAGS = ("--body-file", "-F")
+MSYS_DRIVE_PATH = re.compile(r"^/([a-zA-Z])/")
+GH_LABEL = "gh command"
 
 
 @dataclass(frozen=True)
@@ -91,6 +102,51 @@ def scan_paths(paths: list[str]) -> list[Finding]:
     return findings
 
 
+def unquote(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
+        return token[1:-1]
+    return token
+
+
+def body_file_args(command: str) -> list[str]:
+    tokens = shlex.split(command, posix=False)
+    args = []
+    for index, token in enumerate(tokens):
+        if token in BODY_FILE_FLAGS:
+            args.append(unquote(tokens[index + 1]) if index + 1 < len(tokens) else "")
+        elif token.startswith("--body-file="):
+            args.append(unquote(token.removeprefix("--body-file=")))
+    return args
+
+
+def scan_body_file(arg: str, cwd: Path, denylist: list[str]) -> list[Finding]:
+    if arg in ("", "-"):
+        return [Finding(GH_LABEL, "body from stdin; pass a file to --body-file")]
+    path = cwd / MSYS_DRIVE_PATH.sub(r"\1:/", arg)
+    if not path.is_file():
+        return [Finding(arg, "body file not found, so it cannot be scanned")]
+    return scan_text(arg, path.read_text(encoding="utf-8"), denylist)
+
+
+def scan_gh_command(command: str, cwd: Path, denylist: list[str]) -> list[Finding]:
+    if not GH_WRITE_COMMAND.search(command):
+        return []
+    if "\n" in command.strip():
+        return [Finding(GH_LABEL, "spans more than one line; use --body-file")]
+    try:
+        args = body_file_args(command)
+    except ValueError:
+        return [Finding(GH_LABEL, "cannot be parsed, so it cannot be scanned")]
+    findings = scan_text(GH_LABEL, command, denylist)
+    for arg in args:
+        findings += scan_body_file(arg, cwd, denylist)
+    return findings
+
+
+def read_stdin() -> str:
+    return sys.stdin.buffer.read().decode("utf-8")
+
+
 def git(*args: str) -> str:
     return subprocess.run(
         ["git", *args],
@@ -142,16 +198,30 @@ def scan_push(push_lines: list[str], denylist: list[str]) -> list[Finding]:
 
 def main(argv: list[str]) -> int:
     denylist = load_denylist(DENYLIST_PATH)
+    blocked_code = 1
     if argv == ["staged"]:
         findings = scan_staged(denylist)
     elif argv == ["push"]:
-        findings = scan_push(sys.stdin.read().splitlines(), denylist)
+        findings = scan_push(read_stdin().splitlines(), denylist)
+    elif argv == ["text"]:
+        findings = scan_text("stdin", read_stdin(), denylist)
+    elif len(argv) == 2 and argv[0] == "text":
+        findings = scan_text(
+            argv[1], Path(argv[1]).read_text(encoding="utf-8"), denylist
+        )
+    elif argv == ["gh-hook"]:
+        event = json.loads(read_stdin())
+        command = event["tool_input"]["command"]
+        findings = scan_gh_command(command, Path(event["cwd"]), denylist)
+        blocked_code = 2
     else:
-        print("usage: check_secrets.py staged|push", file=sys.stderr)
+        print(
+            "usage: check_secrets.py staged|push|text [FILE]|gh-hook", file=sys.stderr
+        )
         return 2
     for finding in findings:
         print(f"Blocked: {finding.path}: {finding.reason}", file=sys.stderr)
-    return 1 if findings else 0
+    return blocked_code if findings else 0
 
 
 if __name__ == "__main__":

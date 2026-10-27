@@ -8,5 +8,47 @@
       "PowerShell(git commit * -n*)",
       "PowerShell(git * core.hooksPath*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh issue *)",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --quiet python scripts/check_secrets.py gh-hook",
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh pr *)",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --quiet python scripts/check_secrets.py gh-hook",
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "PowerShell(gh issue *)",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --quiet python scripts/check_secrets.py gh-hook",
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "if": "PowerShell(gh pr *)",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --quiet python scripts/check_secrets.py gh-hook",
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
   }
 }

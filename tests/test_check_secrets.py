@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 import tempfile
@@ -117,6 +118,114 @@ class LoadDenylistTest(unittest.TestCase):
             self.assertEqual(check_secrets.load_denylist(path), ["myapp", "other-id"])
 
 
+class ScanGhCommandTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cwd = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def scan(self, command, denylist=()):
+        return check_secrets.scan_gh_command(command, self.cwd, list(denylist))
+
+    def write_body(self, name, content):
+        (self.cwd / name).write_text(content, encoding="utf-8")
+
+    def test_read_only_gh_commands_pass(self):
+        for command in ["gh issue view 3", "gh issue list --label needs-triage"]:
+            with self.subTest(command):
+                self.assertEqual(self.scan(command, ["myapp"]), [])
+
+    def test_clean_issue_create_passes(self):
+        self.assertEqual(
+            self.scan('gh issue create --title "Add report" --body "One line"'), []
+        )
+
+    def test_secret_in_title_blocks(self):
+        title = FAKE_SECRETS["Google API key"]
+        self.assertEqual(len(self.scan(f'gh issue create --title "{title}"')), 1)
+
+    def test_denylisted_word_blocks_ignoring_case(self):
+        findings = self.scan('gh pr comment 4 --body "about MyApp"', ["myapp"])
+        self.assertEqual(len(findings), 1)
+        self.assertIn("myapp", findings[0].reason)
+
+    def test_every_write_subcommand_is_scanned(self):
+        for command in [
+            "gh issue create",
+            "gh issue edit 1",
+            "gh issue comment 1",
+            "gh pr create",
+            "gh pr edit 1",
+            "gh pr comment 1",
+        ]:
+            with self.subTest(command):
+                self.assertEqual(
+                    len(self.scan(command + " --body myapp", ["myapp"])), 1
+                )
+
+    def test_write_command_after_other_commands_is_scanned(self):
+        command = "cd repo && gh issue create --title myapp"
+        self.assertEqual(len(self.scan(command, ["myapp"])), 1)
+
+    def test_multi_line_command_blocks(self):
+        command = 'gh issue create --title "x" --body "first\nsecond"'
+        self.assertIn("more than one line", self.scan(command)[0].reason)
+
+    def test_clean_body_file_passes(self):
+        self.write_body("body.md", "line one\nline two\n")
+        self.assertEqual(self.scan("gh issue create --title x --body-file body.md"), [])
+
+    def test_secret_in_body_file_blocks_in_every_flag_form(self):
+        self.write_body("body.md", "fine\n" + FAKE_SECRETS["OAuth access token"] + "\n")
+        for flag in ["--body-file body.md", "--body-file=body.md", "-F body.md"]:
+            with self.subTest(flag):
+                findings = self.scan(f"gh issue create --title x {flag}")
+                self.assertEqual([f.path for f in findings], ["body.md"])
+
+    def test_denylisted_word_in_body_file_blocks(self):
+        self.write_body("body.md", "The MyApp report\n")
+        self.assertEqual(
+            len(self.scan("gh issue comment 2 --body-file body.md", ["myapp"])), 1
+        )
+
+    def test_quoted_body_file_path_with_spaces_is_read(self):
+        self.write_body("my body.md", FAKE_SECRETS["AdMob publisher ID"])
+        self.assertEqual(
+            len(self.scan('gh issue create --title x --body-file "my body.md"')), 1
+        )
+
+    def test_absolute_body_file_path_is_read(self):
+        path = self.cwd / "body.md"
+        path.write_text(FAKE_SECRETS["AdMob publisher ID"], encoding="utf-8")
+        command = f'gh issue create --title x --body-file "{path}"'
+        self.assertEqual(len(check_secrets.scan_gh_command(command, Path("."), [])), 1)
+
+    def test_msys_drive_path_is_read(self):
+        path = self.cwd / "body.md"
+        path.write_text(FAKE_SECRETS["AdMob publisher ID"], encoding="utf-8")
+        drive, rest = path.as_posix().split(":", 1)
+        command = f"gh issue create --title x --body-file /{drive.lower()}{rest}"
+        self.assertEqual(len(check_secrets.scan_gh_command(command, Path("."), [])), 1)
+
+    def test_missing_body_file_blocks(self):
+        findings = self.scan("gh issue create --title x --body-file nope.md")
+        self.assertIn("not found", findings[0].reason)
+
+    def test_body_from_stdin_blocks(self):
+        for command in [
+            "gh issue create --title x --body-file -",
+            "gh issue create --title x -F",
+        ]:
+            with self.subTest(command):
+                self.assertEqual(len(self.scan(command)), 1)
+
+    def test_unbalanced_quotes_block(self):
+        findings = self.scan('gh issue create --title "x')
+        self.assertIn("cannot be parsed", findings[0].reason)
+
+
 class HookCommandTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -188,6 +297,43 @@ class HookCommandTest(unittest.TestCase):
     def test_branch_deletion_passes(self):
         line = "(delete) " + "0" * 40 + " refs/heads/old " + "1" * 40 + "\n"
         self.assertEqual(self.run_script("push", stdin=line).returncode, 0)
+
+    def test_text_file_with_secret_blocks(self):
+        (self.repo / "body.md").write_text(
+            FAKE_SECRETS["OAuth client secret"], encoding="utf-8"
+        )
+        result = self.run_script("text", "body.md")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("body.md", result.stderr)
+
+    def test_text_from_stdin_uses_denylist(self):
+        self.assertEqual(self.run_script("text", stdin="about MyApp\n").returncode, 1)
+        self.assertEqual(self.run_script("text", stdin="hello\n").returncode, 0)
+
+    def test_gh_hook_blocks_with_exit_code_2(self):
+        result = self.run_script("gh-hook", stdin=self.hook_event("--title MyApp"))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("myapp", result.stderr)
+
+    def test_gh_hook_reads_body_file_from_event_cwd(self):
+        body_dir = self.repo / "scratch"
+        body_dir.mkdir()
+        (body_dir / "body.md").write_text("about MyApp\n", encoding="utf-8")
+        event = self.hook_event("--title x --body-file body.md", cwd=body_dir)
+        self.assertEqual(self.run_script("gh-hook", stdin=event).returncode, 2)
+
+    def test_gh_hook_allows_clean_command(self):
+        result = self.run_script("gh-hook", stdin=self.hook_event("--title fine"))
+        self.assertEqual(result.returncode, 0)
+
+    def hook_event(self, args, cwd=None):
+        return json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "gh issue create " + args},
+                "cwd": str(cwd or self.repo),
+            }
+        )
 
     def push_line(self):
         sha = subprocess.run(
