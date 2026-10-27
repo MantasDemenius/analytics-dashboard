@@ -1,0 +1,6 @@
+[project]
+name = "analytics-dashboard"
+version = "0.1.0"
+description = "Weekly metrics report for Android apps"
+requires-python = ">=3.14"
+dependencies = []
