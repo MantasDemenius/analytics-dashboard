@@ -18,6 +18,11 @@ committed, revoke it; deleting the commit is not enough. Nothing app-specific go
 either, docs and tests included: no app names, package names, Firebase project IDs, AdMob IDs or
 paths into the apps' repos. Those live only in `config/`.
 
+Git hooks in `.githooks/` enforce this: `scripts/check_secrets.py` blocks commits and pushes carrying
+keys, tokens, private paths, AdMob IDs or any string listed in the gitignored `config/forbidden.txt`.
+A fresh clone needs `git config core.hooksPath .githooks`. Never bypass them; add new app
+identifiers to `config/forbidden.txt` when an app joins.
+
 Other hard constraints, detailed in `docs/decisions.md`: free only (no billing, no Claude tokens on
 the weekly run), review and feedback text never stored, history kept as numbers only, new packages
 agreed with the author first.

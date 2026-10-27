@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git * --no-verify*)",
+      "Bash(git commit * -n*)",
+      "Bash(git * core.hooksPath*)",
+      "PowerShell(git * --no-verify*)",
+      "PowerShell(git commit * -n*)",
+      "PowerShell(git * core.hooksPath*)"
+    ]
+  }
+}

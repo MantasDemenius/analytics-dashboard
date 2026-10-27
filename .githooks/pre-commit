@@ -1,0 +1,2 @@
+#!/bin/sh
+exec uv run --quiet python scripts/check_secrets.py staged
