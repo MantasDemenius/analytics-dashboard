@@ -1,0 +1,20 @@
+# Public repo: everything below holds secrets, private numbers or users' text. Never commit it.
+config/
+history/
+out/
+*.pdf
+*.html
+!templates/**/*.html
+*service-account*.json
+*credentials*.json
+*client_secret*.json
+*token*.json
+.env
+.env.*
+
+.claude/settings.local.json
+.claude/rules-local/
+
+.venv/
+__pycache__/
+.pytest_cache/
