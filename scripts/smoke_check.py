@@ -17,11 +17,12 @@ from google.auth.transport.requests import Request
 from google.cloud import firestore, storage
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
-from google_login import CLIENT_FILE, SCOPES, TOKEN_FILE
+from google_login import CLIENT_FILE, SIGN_INS
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 APPS_DIR = Path("config/apps")
+REPORT_CONFIG = Path("config/report.toml")
 SERVICE_ACCOUNT_SCOPES = [
     "https://www.googleapis.com/auth/cloud-platform",
     "https://www.googleapis.com/auth/androidpublisher",
@@ -111,18 +112,28 @@ def app_checks(config: dict) -> dict[str, Callable[[], str]]:
     }
 
 
-def account_checks() -> dict[str, Callable[[], str]]:
+def account_checks(report_config: dict) -> dict[str, Callable[[], str]]:
     def admob() -> str:
-        credentials = Credentials.from_authorized_user_file(str(TOKEN_FILE))
+        credentials = Credentials.from_authorized_user_file(
+            str(SIGN_INS["admob"].token_file)
+        )
         credentials.refresh(Request())
         accounts = (
             build("admob", "v1", credentials=credentials).accounts().list().execute()
         )
-        return f"{len(accounts.get('account', []))} AdMob account(s)"
+        publishers = [account["publisherId"] for account in accounts.get("account", [])]
+        if report_config["admob_publisher"] not in publishers:
+            raise RuntimeError(
+                "signed in to a different AdMob account than admob_publisher in "
+                f"{REPORT_CONFIG}; sign in again as the account that owns it"
+            )
+        return "signed in to the configured AdMob account"
 
     def gmail_scope() -> str:
-        credentials = Credentials.from_authorized_user_file(str(TOKEN_FILE))
-        missing = set(SCOPES) - set(credentials.scopes or [])
+        sign_in = SIGN_INS["gmail"]
+        credentials = Credentials.from_authorized_user_file(str(sign_in.token_file))
+        credentials.refresh(Request())
+        missing = set(sign_in.scopes) - set(credentials.scopes or [])
         if missing:
             raise RuntimeError(f"sign-in is missing {', '.join(sorted(missing))}")
         return "sign-in may send mail"
@@ -132,7 +143,11 @@ def account_checks() -> dict[str, Callable[[], str]]:
 
 def private_files_ignored(config: dict) -> Callable[[], str]:
     def check() -> str:
-        paths = [config["service_account_key"], str(CLIENT_FILE), str(TOKEN_FILE)]
+        paths = [
+            config["service_account_key"],
+            str(CLIENT_FILE),
+            *(str(sign_in.token_file) for sign_in in SIGN_INS.values()),
+        ]
         visible = [
             path
             for path in paths
@@ -152,7 +167,8 @@ def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     config = load_app_config(sys.argv[1])
-    checks = app_checks(config) | account_checks()
+    report_config = tomllib.loads(REPORT_CONFIG.read_text())
+    checks = app_checks(config) | account_checks(report_config)
     checks["Git"] = private_files_ignored(config)
     sys.exit(run_checks(checks))
 

@@ -5,7 +5,7 @@ is used only by its author. It is not a hosted service and has no other users.
 
 ## What it accesses
 
-When the author signs in with their Google account, the tool asks for two permissions:
+The author signs in twice, once for each permission, possibly with different Google accounts:
 
 - **AdMob reports** (`admob.report`): to read the author's own ad performance and earnings.
 - **Send email** (`gmail.send`): to email the weekly report to the author. It cannot read, change

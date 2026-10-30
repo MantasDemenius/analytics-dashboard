@@ -60,8 +60,9 @@ weekly report covering every app, built so later apps plug in through config.
   Firebase project and app ID, package, Play report bucket, feedback collection and its own
   service account key (`config/apps/<app>-service-account.json`). Each app's service account lives
   in that app's own Firebase project, so no extra Cloud project exists. AdMob and Gmail belong to
-  the author's Google account, not to an app, so they share one sign-in
-  (`config/oauth-client.json`, `config/oauth-token.json`) and `config/report.toml` holds the
+  the author's Google accounts, not to an app, so every app shares two sign-ins through one OAuth
+  client (`config/oauth-client.json`): `config/admob-token.json` (`admob.report` only) and
+  `config/gmail-token.json` (`gmail.send` only), and `config/report.toml` holds the
   recipient. One run covers every app config, all in one weekly email with a section per app.
   `scripts/setup_app.sh <app>` creates all of it, and `scripts/smoke_check.py <app>` proves it.
   Build only for one app until a second arrives.
@@ -175,8 +176,31 @@ All of it is walked through by `scripts/setup_app.sh <app>`.
   `admob.report` (the narrowest that reads reports) and `gmail.send`. Its consent screen must be
   **In production**: in Testing, Google expires refresh tokens after 7 days and the weekly run would
   fail. Unverified is fine for personal use. Changing the Google password also revokes a token
-  that holds Gmail scopes.
+  that holds Gmail scopes. Publishing needs a home page and privacy policy link on the Branding
+  page: the repo and its `PRIVACY.md`, with `github.com` as the authorized domain.
+- **Two sign-ins, one scope each** (2026-10-30): `google_login.py admob` signs in as the account
+  that owns AdMob, `google_login.py gmail` as the account the report is sent from. They may be
+  different accounts, and a leaked AdMob token cannot send mail. Inviting the sending account to
+  AdMob as a Reporter was tried and failed: AdMob refused the email as "already associated with an
+  AdSense account", since a Google account can belong to only one AdSense or AdMob account.
 - GA4 (phase 2): add the service account as a viewer on the property.
+
+## AdMob report
+
+Confirmed on 2026-10-30 with one real `accounts.networkReport:generate` call (AdMob API `v1`,
+scope `admob.report`), for the last 7 days:
+
+- **Dimensions** `DATE`, `AD_UNIT`, `FORMAT` give one row per ad unit per day. `AD_UNIT` carries
+  the unit's ID as `value` and its name as `displayLabel`, so the report needs no unit list (which
+  `admob.report` cannot read anyway: listing apps and ad units is refused).
+- **Metrics** `ESTIMATED_EARNINGS` (`microsValue`, millionths of the account currency),
+  `IMPRESSIONS`, `AD_REQUESTS`, `CLICKS` (`integerValue`), `IMPRESSION_RPM` (eCPM) and
+  `MATCH_RATE` (`doubleValue`). The header's `localizationSettings.currencyCode` gives the
+  currency; the report shows it rather than assuming one.
+- **Days with no traffic have no row**: 7 days by 2 units came back as 9 rows. The report fills
+  missing unit days with zero.
+- **Earnings growth over time needs no history of our own:** grouped by `MONTH`, the API returned
+  27 months back. The weekly snapshot is still kept for week over week changes.
 
 ## Printing the PDF
 
@@ -243,7 +267,6 @@ repo. This tool sends no alerts of its own.
 
 1. Play bucket: which CSVs carry installs, uninstalls, ratings, store listing conversion and
    reviews? Are they UTF-16 encoded?
-2. AdMob API: does a network report break earnings down per ad unit per day as expected?
 
 ## Open questions for the spec
 

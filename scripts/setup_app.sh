@@ -231,12 +231,10 @@ mkdir -p config/apps
 APP_CONFIG="config/apps/$APP.toml"
 KEY_FILE="config/apps/$APP-service-account.json"
 CLIENT_FILE="config/oauth-client.json"
-TOKEN_FILE="config/oauth-token.json"
-
 SHARED=1
-if [[ -f "$TOKEN_FILE" ]]; then
+if [[ -f config/admob-token.json && -f config/gmail-token.json ]]; then
   SHARED=0
-  confirm "The shared Google sign-in is already set up. Redo it too?" && SHARED=1
+  confirm "The shared AdMob and Gmail sign-ins are already set up. Redo them too?" && SHARED=1
 fi
 TOTAL_STAGES=$(( SHARED ? 10 : 7 ))
 
@@ -333,11 +331,14 @@ if (( SHARED )); then
   write_env OAUTH_PROJECT "$FIREBASE_PROJECT"
 
   stage "Shared: OAuth consent screen"
-  say "One sign-in, shared by every app, for AdMob reports and sending the email."
-  say "It lives in this app's project ($OAUTH_PROJECT)."
+  say "Two sign-ins shared by every app: one reads AdMob reports, one sends the email."
+  say "Their OAuth client lives in this app's project ($OAUTH_PROJECT)."
   open_url "https://console.cloud.google.com/auth/overview?project=$OAUTH_PROJECT"
   step "Get started. App name: Analytics report. Support email: yours. Audience: External."
   step "Contact email: yours. Agree to the policy, Create."
+  step "Branding → Application home page: https://github.com/MantasDemenius/analytics-dashboard"
+  step "Privacy policy link: https://github.com/MantasDemenius/analytics-dashboard/blob/master/PRIVACY.md"
+  step "Authorized domains → Add domain: github.com → Save."
   step "Data access → Add or remove scopes → paste these two into 'Manually add scopes':"
   note "https://www.googleapis.com/auth/admob.report"
   note "https://www.googleapis.com/auth/gmail.send"
@@ -358,16 +359,21 @@ if (( SHARED )); then
   done
   pause
 
-  stage "Shared: sign in"
-  say "A browser tab asks you to sign in. Use the account that owns AdMob;"
-  say "the weekly email is sent from it."
+  stage "Shared: sign in twice"
+  say "Two browser sign-ins, one permission each. They may be different Google accounts."
   step "On 'Google hasn't verified this app': Advanced → Go to Analytics report → Continue."
-  step "Tick both permissions (AdMob reports, send email) and Continue."
   ask REPORT_RECIPIENT "Email address that should receive the weekly report:"
   write_env REPORT_RECIPIENT "$REPORT_RECIPIENT"
-  pause "Press Enter to open the sign-in"
-  uv run python scripts/google_login.py
-  printf 'recipient = "%s"\n' "$REPORT_RECIPIENT" > config/report.toml
+  open_url "https://admob.google.com/v2/settings"
+  step "In AdMob (as the account that owns it): Settings → Account information → Publisher ID."
+  ask ADMOB_PUBLISHER "Publisher ID (pub-...):"
+  write_env ADMOB_PUBLISHER "$ADMOB_PUBLISHER"
+  remember_identifier "$ADMOB_PUBLISHER"
+  pause "Press Enter, then sign in with the account that OWNS AdMob"
+  uv run python scripts/google_login.py admob
+  pause "Press Enter, then sign in with the account the report is SENT FROM"
+  uv run python scripts/google_login.py gmail
+  printf 'recipient = "%s"\nadmob_publisher = "%s"\n' "$REPORT_RECIPIENT" "$ADMOB_PUBLISHER" > config/report.toml
   printf '  %s✓ wrote%s config/report.toml\n' "$GREEN" "$RESET"
   pause
 fi
