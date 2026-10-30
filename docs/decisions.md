@@ -202,6 +202,29 @@ scope `admob.report`), for the last 7 days:
 - **Earnings growth over time needs no history of our own:** grouped by `MONTH`, the API returned
   27 months back. The weekly snapshot is still kept for week over week changes.
 
+## Report layout
+
+Picked by the author on 2026-10-30 from three rendered prototypes: **the dashboard layout**. It
+reads fastest, which is what a weekly glance needs.
+
+- Top: week range, generated time, and an "at a glance" table with one row per app (net growth,
+  store rating, crash free users, crash rate, new feedback, ad earnings, each with its change).
+- Per app: eight number cards with a 12 week sparkline each (installs, uninstalls, net growth,
+  listing conversion, store rating, crash free users, Play crash rate, ad earnings), then cards
+  per section: daily installs and uninstalls, a 12 week trend, vitals bars against Play's bad
+  behaviour thresholds with last week's tick, rating breakdown with every review, a table of every
+  Crashlytics issue (new and regressed first), feedback cards, and AdMob per ad unit with stacked
+  12 week earnings.
+- Every number shows its change against last week with an arrow, coloured by better or worse
+  (a rise in uninstalls, crash rate, ANR rate or bug reports is worse).
+- In the PDF each app starts on a new page; about 5 A4 pages per app.
+- Rejected: a one column "newsletter" (nicest for long text, but longest and hardest to compare)
+  and a dense "ledger" of tables (most compact, least friendly). Known weakness of the pick:
+  review and feedback text is squeezed into two columns, so the build may give those a full width.
+
+The prototype (`out/prototype/`, gitignored, made-up data) stays on the author's PC as the visual
+reference until the real template replaces it, then gets deleted.
+
 ## Printing the PDF
 
 Settled on 2026-10-30 by printing a test page of 8 Chart.js 4.4.1 charts (inlined, 3 A4 pages)
@@ -277,3 +300,11 @@ repo. This tool sends no alerts of its own.
   them apart once it is posted; for the API's newest days the only way is remembering review ids
   already seen, and history is numbers only. Is a list of review ids allowed in history, or is
   "new or edited" one label?
+- Which "average rating" leads: the store rating, or the average of this week's new ratings? They
+  tell different stories; the prototype shows both.
+- Reviews not in English: show the original, the Reviews API's translation, or both?
+- Crashlytics issue order: new and regressed first (as prototyped), or by users affected, or by
+  events?
+- When a second app lacks some history, do its rows show "n/a" or disappear?
+- What the vitals figures mean: confirm whether the Reporting API's crash and ANR rates are 28 day
+  rolling values or weekly ones before labelling them.
