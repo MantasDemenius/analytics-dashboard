@@ -85,10 +85,10 @@ weekly report covering every app, built so later apps plug in through config.
 
 ## Metrics, and where each comes from
 
-| Section | Metrics | Source (as researched, see "Unverified" below) |
+| Section | Metrics | Source |
 |---|---|---|
-| Play: growth | new installs, uninstalls, net growth | Play Console's Cloud Storage report bucket (daily updated monthly CSVs). No API exposes these |
-| Play: listing | store listing visitors and install conversion % | Same bucket |
+| Play: growth | new installs, uninstalls, net growth | Play Console's Cloud Storage report bucket (daily updated monthly CSVs), the installs overview file. No API exposes these. See "Play report bucket" below |
+| Play: listing | store listing visitors and install conversion % | Same bucket, the store performance file |
 | Play: ratings | average rating, and the **full text of every new review, all star levels** | Review text: Reviews API first, merged with the bucket's reviews CSV. Average rating: the bucket's ratings CSV. See "Play reviews and rating source" below |
 | Play: vitals | crash rate and ANR rate against Play's bad behaviour threshold | Play Developer Reporting API |
 | Crashlytics | crash free users %, **every issue** (not a top N), new and regressed issues called out | Crashlytics REST API (`firebasecrashlytics` `v1alpha`), read with a service account. See "Crashlytics source" below |
@@ -142,24 +142,81 @@ the `reviews` REST reference, and Play Console help article 6135870 on monthly r
 - **Developer replies:** replied reviews are still returned; the user comment is `comments[0]` and
   the reply `comments[1]`, each with its own `lastModified`. Always read the user comment's time.
 - **Reviews CSV:** `reviews/reviews_<package>_<YYYYMM>.csv` in the report bucket, one file per
-  month, captured daily but **posted 3 to 7 days late**. Dates are ISO 8601 UTC. Review text has
-  its line breaks stripped. Docs imply UTF-16 (they say to convert it to UTF-8 for BigQuery). A
-  week can straddle two monthly files.
-- **Average rating:** neither reviews source can give it, because star-only ratings are missing
+  month. The docs say 3 to 7 days late, but on the real bucket it held a review from the day
+  before. Dates are ISO 8601 UTC. Review text has its line breaks stripped (per the docs). A week
+  can straddle two monthly files. File layout, encoding and the merge key are under "Play report
+  bucket" below.
+- **Store rating:** neither reviews source can give it, because star-only ratings are missing
   from the API and averaging only text reviews would skew it. It comes from the bucket's ratings
-  CSV (`stats/ratings/ratings_<package>_<YYYYMM>_<dimension>.csv`, columns "Daily Average Rating"
-  and "Total Average Rating"), which has the same 3 to 7 day lag.
+  overview CSV, which lags about 7 days and has glitches (see "Play report bucket").
+- **This week's new ratings:** the reviews CSV carries every rating, star-only ones included, so
+  the average of the week's new ratings can be computed from its "Star Rating" column.
 
 Decision: review text comes from the Reviews API, which has no posting lag, merged by review with
 the reviews CSV, which covers the days the API window has already dropped when a run is late. A
 review written 8 days before a run is gone from the API unless edited, but should be in the CSV by
 then. When a run is so late that neither source can be trusted for the whole week, the report says
-so. The average rating comes from the ratings CSV.
+so. The store rating comes from the ratings CSV.
 
-Left for the bucket mapping ticket to confirm on real files: whether an `overview` ratings file
-exists (the help article lists only per-dimension files), whether the reviews CSV carries
-star-only rows, the encoding, and how the review id is read from the CSV's "Review Link" column so
-the two sources can be merged.
+## Play report bucket
+
+Mapped on 2026-10-31 by reading the first app's bucket with its report service account (holding
+only the read only Play permission). The bucket name lives in the app's config, never here.
+
+- **Files:** monthly CSVs named `<prefix>_<package>_<YYYYMM>_<dimension>.csv`. The report reads
+  three families, each from its `overview` (or `country`) file:
+  - `stats/installs/installs_<package>_<YYYYMM>_overview.csv`
+  - `stats/store_performance/store_performance_<package>_<YYYYMM>_country.csv`
+  - `stats/ratings/ratings_<package>_<YYYYMM>_overview.csv` (the overview file does exist, though
+    the help article lists only per-dimension ones)
+  - and `reviews/reviews_<package>_<YYYYMM>.csv`, which has no dimension.
+
+  Per-dimension files (app version, carrier, country, device, language, OS version, traffic
+  source) exist too and are not needed. `stats/crashes/` stopped in 2024-11 and
+  `total_store_performance` in 2026-08; neither is used (vitals come from the Reporting API).
+- **Encoding:** every file is UTF-16LE with a byte order mark (`FF FE`), served with
+  `text/csv; charset=utf-16le`. Python reads them with `bytes.decode("utf-16")` and the standard
+  `csv` module; no package needed.
+- **Dates:** stats files carry one row per day as `YYYY-MM-DD` in a `Date` column; the docs do not
+  name a time zone. Reviews carry ISO 8601 UTC (`2026-10-19T12:35:08Z`) plus epoch milliseconds.
+  **Days can be missing**: a day with no data has no row (the ratings file skipped 3 of 23 days in
+  October), so the report treats a missing day as zero for counts and carries the last value for
+  the rating.
+- **Installs overview columns:** `Date`, `Package name`, `Daily Device Installs`, `Daily Device
+  Uninstalls`, `Daily Device Upgrades`, `Total User Installs`, `Daily User Installs`, `Daily User
+  Uninstalls`, `Active Device Installs`, `Install events`, `Update events`, `Uninstall events`.
+  `Daily Device Uninstalls`, `Daily Device Upgrades` and `Total User Installs` are zero in every
+  month back to 2024-02, so they are dead. Google publishes no definition of the rest. The report
+  uses **`Daily User Installs` and `Daily User Uninstalls`**: the only live pair counted at the
+  same level (users), so net growth is their difference. `Daily Device Installs` would pair with
+  no live uninstall column, and the event columns count reinstalls.
+- **Store performance columns:** `Date`, `Package name`, `Country / region`, `Store listing
+  acquisitions`, `Store listing visitors`, `Store listing conversion rate`. Per the help article,
+  visitors and acquisitions count only users who had the app on no device. A small app gets one
+  `Other` row per day; a bigger one gets a row per country, so the report sums rows per day. The
+  rate column carries noise in its last digits, so weekly conversion is summed acquisitions over
+  summed visitors, never an average of the daily rates.
+- **Ratings overview columns:** `Date`, `Package Name`, `Daily Average Rating` (0.0 on a day with
+  no ratings), `Total Average Rating`. In October the total fits a lifetime average (3.7727 is
+  83 / 22, and 3.6521 is 84 / 23 after one 1 star rating), but single rows jump to 1.0 or 0.0 and
+  September wandered between 2.5 and 4.0 in a way no lifetime average could. A lifetime average
+  rebuilt from every reviews CSV does not match it either (3.80 to 3.89 over the same days), so it
+  cannot stand in. Which value the report shows as the store rating is an open question below.
+- **Reviews CSV columns:** `Package Name`, `App Version Code`, `App Version Name`, `Reviewer
+  Language`, `Device`, `Review Submit Date and Time`, `Review Submit Millis Since Epoch`, `Review
+  Last Update Date and Time`, `Review Last Update Millis Since Epoch`, `Star Rating`, `Review
+  Title`, `Review Text`, `Developer Reply Date and Time`, `Developer Reply Millis Since Epoch`,
+  `Developer Reply Text`, `Review Link`. **Star-only ratings are rows** with empty text and an
+  empty `Review Link`.
+- **Merge key:** the `reviewId` query parameter of `Review Link` (a UUID) equals the Reviews API's
+  `reviewId`, and `Review Last Update Millis Since Epoch` equals the API's
+  `userComment.lastModified` to the millisecond; checked on a review present in both. Star-only
+  rows have no id, but the API never returns them, so nothing needs merging for them. `Review Link`
+  also carries the Play Console developer and app ids, so the report never prints the link.
+- **Posting lag**, measured on files updated 2026-10-30: reviews held a review from 10-29, the
+  installs overview ran to 10-26 (4 days), store performance to 10-24 (6 days), ratings to 10-23
+  (7 days). So a Monday run cannot have the week that just ended from the bucket; see the open
+  questions.
 
 ## Credentials (one time, by the author)
 
@@ -288,20 +345,26 @@ repo. This tool sends no alerts of its own.
 
 ## Unverified, check before the spec rests on it
 
-1. Play bucket: which CSVs carry installs, uninstalls, ratings, store listing conversion and
-   reviews? Are they UTF-16 encoded?
+None open.
 
 ## Open questions for the spec
 
 - The emailed PDF puts feedback text, and any email address a bug report carries, into the
   author's Gmail inbox, which is a copy outside Firestore. Does the PDF carry full feedback text,
   or counts plus text with emails and App IDs left out, while the local HTML shows everything?
-- Should the report mark a review as "edited" rather than "new"? The CSV's submit date can tell
-  them apart once it is posted; for the API's newest days the only way is remembering review ids
-  already seen, and history is numbers only. Is a list of review ids allowed in history, or is
-  "new or edited" one label?
+- Should the report mark a review as "edited" rather than "new"? The CSV's submit date tells them
+  apart, and on the real bucket the reviews CSV was only a day behind, so only the newest day or
+  so would lack it. Is that gap labelled "new or edited", or are review ids remembered in history
+  (which is numbers only today)?
 - Which "average rating" leads: the store rating, or the average of this week's new ratings? They
   tell different stories; the prototype shows both.
+- Which week does a Monday run report? The bucket lags 4 to 7 days (installs, listing, ratings)
+  while the APIs are current. Options: every section reports the week that just ended and bucket
+  numbers show "data to <date>"; every section reports the week before it so all numbers cover
+  the same complete days; or bucket sections report their own latest complete 7 days, labelled.
+- Which value is the store rating, given the ratings CSV's glitches? The latest
+  `Total Average Rating` can be 1.0 or 0.0 on a bad day. Compare it against the rating Play
+  Console shows before picking a rule (for example, the most common value over the last 7 rows).
 - Reviews not in English: show the original, the Reviews API's translation, or both?
 - Crashlytics issue order: new and regressed first (as prototyped), or by users affected, or by
   events?
