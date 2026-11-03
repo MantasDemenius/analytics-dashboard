@@ -82,6 +82,7 @@ class ScanPathsTest(unittest.TestCase):
             "config/apps.md",
             "history/2026-10-26.json",
             "out/report.html",
+            "logs/weekly-report.log",
             "report.pdf",
             "report.html",
             "keys/play-service-account.json",
@@ -98,6 +99,9 @@ class ScanPathsTest(unittest.TestCase):
         paths = [
             "templates/report.html",
             "config.example.toml",
+            "config.example/report.toml",
+            "config.example/apps/myapp.toml",
+            "src/weekly_report/templates/report.html.j2",
             "src/token_store.py",
             "docs/decisions.md",
         ]

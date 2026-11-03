@@ -2,6 +2,7 @@
 config/
 history/
 out/
+logs/
 *.pdf
 *.html
 !templates/**/*.html

@@ -34,7 +34,7 @@ CONTENT_PATTERNS = {
 }
 
 PRIVATE_PATH_PATTERNS = {
-    "private folder": re.compile(r"^(config|history|out)/"),
+    "private folder": re.compile(r"^(config|history|out|logs)/"),
     "PDF report": re.compile(r"\.pdf$"),
     "HTML outside templates/": re.compile(r"^(?!templates/).*\.html$"),
     "key or token file": re.compile(
