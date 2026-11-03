@@ -69,7 +69,8 @@ weekly report covering every app, built so later apps plug in through config.
 - New packages are a joint decision with the author. Agreed so far: `google-api-python-client`
   (Play reviews and reporting, AdMob, Gmail), `google-auth-oauthlib` (the one time login as the
   author), `google-cloud-storage` (Play report bucket), `google-cloud-firestore` (feedback) and
-  `jinja2` (HTML template); `pytest` and `ruff` for development only. Deferred until needed:
+  `jinja2` (HTML template), and `uv_build` as the build backend (agreed 2026-11-03, it is uv's
+  own and installs nothing at run time); `pytest` and `ruff` for development only. Deferred until needed:
   `google-cloud-bigquery` (only if the Crashlytics API turns out unreadable with a service
   account and the BigQuery export becomes the fallback) and
   `google-analytics-data` (phase 2). Not added directly: `requests` (the Google clients pull it in
@@ -360,6 +361,12 @@ reads fastest, which is what a weekly glance needs.
 - Every number shows its change against last week with an arrow, coloured by better or worse
   (a rise in uninstalls, crash rate, ANR rate or bug reports is worse).
 - In the PDF each app starts on a new page; about 5 A4 pages per app.
+- Built on top of that, kept with the author's agreement on 2026-11-03: Crashlytics issue
+  labels for early and repetitive signals, kind and state tags and console links on issue rows, a
+  navigation bar per app, a phone width layout, Chart.js at device pixel ratio 2 with a redraw
+  before printing, and `logs/` in the secrets check.
+- Every number card and at a glance cell shows its own range in the page, since a bucket or
+  vitals figure covers an older week than a fast source and the PDF has no hover.
 - Rejected: a one column "newsletter" (nicest for long text, but longest and hardest to compare)
   and a dense "ledger" of tables (most compact, least friendly). Known weakness of the pick:
   review and feedback text is squeezed into two columns, so the build may give those a full width.
