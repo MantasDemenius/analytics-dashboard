@@ -20,9 +20,12 @@ from weekly_report.periods import TREND_PERIODS
 
 MINUS = "−"
 NOT_AVAILABLE = "not available for this range"
+NO_RATINGS = "none"
+NO_COMPARISON = "no ratings to compare"
 BLUE = "#2a78d6"
 ORANGE = "#d9622b"
 TEAL = "#1a8f72"
+GOLD = "#c98a12"
 
 
 def signed(number: float, digits: int = 0, unit: str = "") -> str:
@@ -77,6 +80,26 @@ def points_change(metric: Metric) -> str:
     return signed(metric.change, 1, " pts")
 
 
+def rating(number: float) -> str:
+    return f"{number:.2f}" if number else NO_RATINGS
+
+
+def stars_change(metric: Metric) -> str:
+    if not has_ratings(metric):
+        return NO_COMPARISON
+    if metric.change == 0:
+        return "no change"
+    return signed(metric.change, 2, " stars")
+
+
+def has_ratings(metric: Metric) -> bool:
+    return metric.value > 0 and metric.previous > 0
+
+
+def no_note(section: Any) -> str:
+    return ""
+
+
 class Better(Enum):
     UP = "up"
     DOWN = "down"
@@ -98,6 +121,8 @@ class Headline:
     colour: str = BLUE
     shown: Callable[[float], str] = count
     change: Callable[[Metric], str] = change_text
+    comparable: Callable[[Metric], bool] = lambda metric: True
+    note: Callable[[Any], str] = no_note
 
 
 @dataclass(frozen=True)
@@ -121,6 +146,7 @@ class Figure:
     periods: str
     trend: tuple[Point, ...]
     colour: str = BLUE
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -155,17 +181,19 @@ def figure(headline: Headline, section: Any) -> Figure | Missing:
         )
     metric = headline.metric(section)
     coverage = section.coverage
+    change = metric.change if headline.comparable(metric) else 0
     return Figure(
         label=headline.label,
         value=headline.shown(metric.value),
         change=headline.change(metric),
-        direction=direction(metric.change),
-        verdict=verdict(metric.change, headline.better),
+        direction=direction(change),
+        verdict=verdict(change, headline.better),
         was=f"{headline.shown(metric.previous)} {before(coverage.covered.length)}",
         range=coverage.label(),
         periods=periods_of(coverage.period.length),
         trend=metric.trend,
         colour=headline.colour,
+        note=headline.note(section),
     )
 
 
@@ -190,9 +218,39 @@ LISTING_CONVERSION = Headline(
     shown=percent,
     change=points_change,
 )
-CARDS = (NEW_INSTALLS, UNINSTALLS, NET_GROWTH, LISTING_CONVERSION)
-GLANCE = (NET_GROWTH,)
-SECTIONS = (Section("growth", "Play: growth", "growth.html.j2"),)
+STORE_RATING = Headline(
+    "Store rating",
+    "reviews",
+    lambda reviews: reviews.store_rating,
+    Better.UP,
+    GOLD,
+    shown=rating,
+    change=stars_change,
+    comparable=has_ratings,
+    note=lambda reviews: (
+        f"28 day average rating, as of {short_day(reviews.coverage.covered.end)}"
+    ),
+)
+NEW_RATINGS_AVERAGE = Headline(
+    "Average of new ratings",
+    "reviews",
+    lambda reviews: reviews.new_average,
+    Better.UP,
+    GOLD,
+    shown=rating,
+    change=stars_change,
+    comparable=has_ratings,
+)
+NEW_RATINGS = Headline(
+    "New ratings", "reviews", lambda reviews: reviews.new_ratings, Better.UP, GOLD
+)
+CARDS = (NEW_INSTALLS, UNINSTALLS, NET_GROWTH, LISTING_CONVERSION, STORE_RATING)
+GLANCE = (NET_GROWTH, STORE_RATING)
+RATINGS_FIGURES = (NEW_RATINGS_AVERAGE, NEW_RATINGS)
+SECTIONS = (
+    Section("growth", "Play: growth", "growth.html.j2"),
+    Section("reviews", "Play: ratings and reviews", "reviews.html.j2"),
+)
 
 
 def initials(name: str) -> str:
@@ -312,6 +370,39 @@ def trend_lines(*series: Series) -> dict:
     }
 
 
+def star_bars(breakdown: dict[int, int]) -> dict:
+    """Horizontal bars, five stars on top, one per star level."""
+    return {
+        "type": "bar",
+        "data": {
+            "labels": [f"{level} star" for level in breakdown],
+            "datasets": [
+                {
+                    "data": list(breakdown.values()),
+                    "backgroundColor": GOLD,
+                    "borderRadius": 4,
+                    "borderSkipped": "start",
+                    "maxBarThickness": 18,
+                }
+            ],
+        },
+        "options": {
+            "indexAxis": "y",
+            "plugins": {"legend": {"display": False}},
+            "scales": {
+                "x": {
+                    "beginAtZero": True,
+                    "grace": "10%",
+                    "grid": {"drawTicks": False},
+                    "border": {"display": False},
+                    "ticks": {"maxTicksLimit": 6, "precision": 0},
+                },
+                "y": {"grid": {"display": False}},
+            },
+        },
+    }
+
+
 def render(
     report: Report,
     cards: tuple[Headline, ...] = CARDS,
@@ -355,6 +446,8 @@ def render(
         "sparkline": sparkline,
         "daily_bars": daily_bars,
         "trend_lines": trend_lines,
+        "star_bars": star_bars,
+        "ratings_figures": RATINGS_FIGURES,
         "figures": figures,
     }
     template = environment.get_template("report.html.j2")

@@ -1,0 +1,43 @@
+{% import "macros.html.j2" as m with context %}
+<section class="card">
+  <header><h3>New ratings<span class="sub">average and count</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  <div class="pair">
+  {% for shown in figures(app, ratings_figures) %}
+    <div><span class="l">{{ shown.label }}</span>
+      <span class="v">{{ shown.value }}</span>
+      <span>{{ m.change(shown) }}<span class="was">{{ shown.was }}</span></span>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+<section class="card">
+  <header><h3>Star breakdown<span class="sub">new ratings</span></h3></header>
+  {{ m.chart(star_bars(section.breakdown), "New ratings by star level", 2.4) }}
+</section>
+<section class="card wide">
+  <header><h3>Reviews<span class="sub">{{ section.reviews | length }} with text</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  {% if section.uncovered %}
+  <p class="caution">Reviews from {% for gap in section.uncovered %}{{ gap.label() }}{{ ", " if not loop.last }}{% endfor %} may be missing: the Reviews API only reaches back 7 days and the reviews report has no file for that time.</p>
+  {% endif %}
+  {% if section.reviews %}
+  <div class="notes">
+  {% for review in section.reviews %}
+    <article class="note review">
+      <div class="rhead">
+        <span class="stars" role="img" aria-label="{{ review.stars }} out of 5 stars">{{ "★" * review.stars }}{{ "☆" * (5 - review.stars) }}</span>
+        <span class="tag {{ review.label.name | lower }}">{{ review.label.value | capitalize }}</span>
+        <span class="sub">{{ review.at.day }} {{ review.at.strftime("%b %Y") }}</span>
+        {% if review.language %}<span class="tag">{{ review.language }}</span>{% endif %}
+        {% if review.replied %}<span class="tag replied">replied</span>{% endif %}
+      </div>
+      {% if review.title %}<p class="rtitle">{{ review.title }}</p>{% endif %}
+      {% if review.text %}<p class="rtext">{{ review.text }}</p>{% endif %}
+      {% if review.original_text %}<p class="original"><span class="tag">original</span> {{ review.original_text }}</p>{% endif %}
+      {% if review.replied %}<p class="reply"><b>Your reply</b> {{ review.reply }}</p>{% endif %}
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No reviews with text in this range.</p>
+  {% endif %}
+</section>

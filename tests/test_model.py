@@ -1,14 +1,17 @@
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from weekly_report.model import (
     AppReport,
     Failure,
     Growth,
+    Label,
     Listing,
     Metric,
     Point,
     Report,
+    Review,
+    Reviews,
     Unavailable,
 )
 from weekly_report.periods import Coverage, Period
@@ -182,13 +185,40 @@ class LevelMetricTest(unittest.TestCase):
         self.assertEqual((metric.value, metric.previous), (20, 17))
 
 
+class ReviewTest(unittest.TestCase):
+    def review(self, reply):
+        return Review(
+            5, "", "Nice", None, None, Label.NEW, datetime(2026, 10, 28), reply
+        )
+
+    def test_a_review_with_a_reply_is_replied(self):
+        self.assertTrue(self.review("Thanks").replied)
+
+    def test_a_review_with_no_reply_is_not(self):
+        self.assertFalse(self.review(None).replied)
+
+
+class RatioTest(unittest.TestCase):
+    def test_a_ratio_per_one_is_a_plain_average(self):
+        stars = Metric(value=18, previous=6, trend=(Point(date(2026, 10, 19), 18),))
+        count = Metric(value=4, previous=2, trend=(Point(date(2026, 10, 19), 4),))
+        average = Metric.ratio(stars, count, per=1)
+        self.assertEqual((average.value, average.previous), (4.5, 3.0))
+        self.assertEqual(average.trend[0].value, 4.5)
+
+    def test_a_ratio_over_nothing_is_zero(self):
+        average = Metric.ratio(Metric(0, 0), Metric(0, 0), per=1)
+        self.assertEqual((average.value, average.previous), (0.0, 0.0))
+
+
 class ReportProblemsTest(unittest.TestCase):
-    def app(self, name="first", growth=None, listing=None):
+    def app(self, name="first", growth=None, listing=None, reviews=None):
         metric = Metric(value=1, previous=1)
         return AppReport(
             name,
             growth or Growth(Coverage(WEEK), metric, metric, metric),
             listing or Listing(Coverage(WEEK), metric, metric, metric),
+            reviews or Reviews(Coverage(WEEK), metric, metric, metric, {}, ()),
         )
 
     def test_no_failures_means_no_problems(self):
@@ -208,11 +238,18 @@ class ReportProblemsTest(unittest.TestCase):
         report = Report(period=WEEK, apps=(self.app(growth=failure, listing=failure),))
         self.assertEqual(report.problems, [("first", failure), ("first", failure)])
 
+    def test_a_failing_reviews_section_is_a_problem(self):
+        failure = Failure(source="Play reviews", error="403 Forbidden")
+        report = Report(period=WEEK, apps=(self.app(reviews=failure),))
+        self.assertEqual(report.problems, [("first", failure)])
+
     def test_a_section_the_range_does_not_reach_is_not_a_problem(self):
         unavailable = Unavailable("Play report bucket", WEEK)
         report = Report(
             period=WEEK,
-            apps=(self.app(growth=unavailable, listing=unavailable),),
+            apps=(
+                self.app(growth=unavailable, listing=unavailable, reviews=unavailable),
+            ),
         )
         self.assertEqual(report.problems, [])
 

@@ -8,10 +8,13 @@ from weekly_report.model import (
     AppReport,
     Failure,
     Growth,
+    Label,
     Listing,
     Metric,
     Point,
     Report,
+    Review,
+    Reviews,
     Unavailable,
 )
 from weekly_report.periods import Coverage, Period
@@ -72,11 +75,51 @@ def listing(conversion=12.5, previous=10.0, coverage=None):
     )
 
 
-def app(name, growth_section=None, listing_section=None):
+REVIEWS_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
+
+
+def review(
+    text="Works well",
+    stars=4,
+    label=Label.NEW,
+    title="",
+    original_text=None,
+    language=None,
+    reply=None,
+    at=datetime(2026, 10, 28, 12, 0),
+):
+    return Review(stars, title, text, original_text, language, label, at, reply)
+
+
+def reviews(
+    store=3.67,
+    previous=3.5,
+    average=4.5,
+    average_before=4.0,
+    count=4,
+    count_before=3,
+    cards=(),
+    uncovered=(),
+    coverage=None,
+    breakdown=None,
+):
+    return Reviews(
+        coverage=coverage or Coverage(REVIEWS_WEEK),
+        store_rating=Metric(store, previous, trend=weekly_trend(store)),
+        new_ratings=Metric(count, count_before, trend=weekly_trend(count)),
+        new_average=Metric(average, average_before, trend=weekly_trend(average)),
+        breakdown=breakdown or {5: 2, 4: 1, 3: 1, 2: 0, 1: 0},
+        reviews=tuple(cards),
+        uncovered=tuple(uncovered),
+    )
+
+
+def app(name, growth_section=None, listing_section=None, reviews_section=None):
     return AppReport(
         name,
         growth() if growth_section is None else growth_section,
         listing() if listing_section is None else listing_section,
+        reviews() if reviews_section is None else reviews_section,
     )
 
 
@@ -118,7 +161,15 @@ def apps(html: str) -> list[str]:
 
 
 def cards(html: str) -> list[str]:
-    return re.split(r'<div class="kpi[ "]', html)[1:]
+    found = []
+    for block in re.findall(
+        r'<div class="kpis">(.*?)<div class="grid"', html, re.DOTALL
+    ):
+        found += re.split(r'<div class="kpi[ "]', block)[1:]
+    return found
+
+
+NO_REVIEWS = Unavailable("Play reviews", REVIEWS_WEEK)
 
 
 def installs(better):
@@ -317,7 +368,15 @@ class NumberCardTest(unittest.TestCase):
         self.assertIn("19 Oct", card)
 
     def test_a_card_of_a_failed_section_says_so_without_a_sparkline(self):
-        html = render(report(app("first", Failure("Play report bucket", "boom"))))
+        html = render(
+            report(
+                app(
+                    "first",
+                    Failure("Play report bucket", "boom"),
+                    reviews_section=NO_REVIEWS,
+                )
+            )
+        )
         [card] = cards(html)
         self.assertIn('class="kpi missing failed"', html)
         self.assertIn("Play report bucket failed", card)
@@ -326,7 +385,13 @@ class NumberCardTest(unittest.TestCase):
 
     def test_a_card_of_an_unreachable_section_says_so(self):
         html = render(
-            report(app("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+            report(
+                app(
+                    "first",
+                    Unavailable("Play report bucket", BUCKET_WEEK),
+                    reviews_section=NO_REVIEWS,
+                )
+            )
         )
         [card] = cards(html)
         self.assertIn('class="kpi missing"', html)
@@ -389,7 +454,13 @@ class GrowthSectionTest(unittest.TestCase):
 
     def test_an_unreachable_range_says_so_and_is_no_problem(self):
         html = render(
-            report(app("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+            report(
+                app(
+                    "first",
+                    Unavailable("Play report bucket", BUCKET_WEEK),
+                    reviews_section=NO_REVIEWS,
+                )
+            )
         )
         section = part(html, 'id="app-0-growth"')
         self.assertIn("not available for this range", section)
@@ -422,11 +493,19 @@ class DefaultCardsTest(unittest.TestCase):
     def labels(self, html):
         return re.findall(r'<span class="l">(.*?)</span>', html)
 
-    def test_are_installs_uninstalls_net_growth_and_listing_conversion(self):
+    def test_are_installs_uninstalls_net_growth_listing_conversion_and_store_rating(
+        self,
+    ):
         html = renderer.render(report(app("first")))
         self.assertEqual(
             self.labels(part(html, '<div class="kpis">')),
-            ["New installs", "Uninstalls", "Net growth", "Listing conversion"],
+            [
+                "New installs",
+                "Uninstalls",
+                "Net growth",
+                "Listing conversion",
+                "Store rating",
+            ],
         )
 
     def test_a_rise_in_uninstalls_is_worse(self):
@@ -496,20 +575,235 @@ class DefaultCardsTest(unittest.TestCase):
         self.assertIn("12 Oct to 18 Oct 2026, data to 15 Oct", conversion)
 
 
+class StoreRatingCardTest(unittest.TestCase):
+    def card(self, section):
+        return cards(renderer.render(report(app("first", reviews_section=section))))[4]
+
+    def test_shows_the_28_day_average_as_of_the_last_day_with_its_change(self):
+        card = self.card(reviews(store=3.67, previous=3.5))
+        self.assertIn(">Store rating<", card)
+        self.assertIn("28 day average rating, as of 1 Nov", card)
+        self.assertIn(">3.67<", card)
+        self.assertIn(
+            '<span class="d better"><span class="arr">▲</span>+0.17 stars', card
+        )
+        self.assertIn("3.50 the week before", card)
+
+    def test_a_fall_is_worse_and_no_change_is_flat(self):
+        fall = self.card(reviews(store=3.4, previous=3.5))
+        flat = self.card(reviews(store=3.5, previous=3.5))
+        self.assertIn(
+            '<span class="d worse"><span class="arr">▼</span>−0.10 stars', fall
+        )
+        self.assertIn('<span class="arr">■</span>no change', flat)
+
+    def test_the_date_is_the_last_day_with_data(self):
+        coverage = Coverage(REVIEWS_WEEK, date(2026, 10, 30))
+        card = self.card(reviews(coverage=coverage))
+        self.assertIn("as of 30 Oct", card)
+
+    def test_draws_its_12_week_sparkline(self):
+        html = renderer.render(report(app("first", reviews_section=reviews(3.67))))
+        self.assertEqual(values(chart(html, "Store rating, 12 weeks"))[-1], 3.67)
+
+    def test_with_no_rating_yet_it_says_none_and_compares_nothing(self):
+        card = self.card(reviews(store=0, previous=0))
+        self.assertIn(">none<", card)
+        self.assertIn("no ratings to compare", card)
+        self.assertIn('<span class="d neutral">', card)
+
+    def test_a_rating_with_nothing_before_it_is_not_compared(self):
+        card = self.card(reviews(store=4.0, previous=0))
+        self.assertIn(">4.00<", card)
+        self.assertIn('<span class="d neutral">', card)
+
+    def test_a_failed_reviews_source_fails_the_card(self):
+        card = self.card(Failure("Play reviews", "403 Forbidden"))
+        self.assertIn("Play reviews failed", card)
+
+    def test_an_unreachable_range_says_so(self):
+        self.assertIn("not available for this range", self.card(NO_REVIEWS))
+
+    def test_the_email_line_says_the_rating_and_its_change(self):
+        lines = renderer.summary(report(app("first")))
+        self.assertEqual(
+            lines[-1], "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better"
+        )
+
+
+class ReviewsSectionTest(unittest.TestCase):
+    def section(self, **kwargs):
+        html = renderer.render(report(app("first", reviews_section=reviews(**kwargs))))
+        return html, part(html, 'id="app-0-reviews"', "</section>\n</div>")
+
+    def test_shows_its_own_range(self):
+        _, section = self.section()
+        self.assertIn("26 Oct to 1 Nov 2026", section)
+
+    def test_shows_the_new_ratings_average_and_count_with_changes(self):
+        _, section = self.section(
+            average=4.5, average_before=4.0, count=4, count_before=3
+        )
+        self.assertIn("Average of new ratings", section)
+        self.assertIn(">4.50<", section)
+        self.assertIn("+0.50 stars", section)
+        self.assertIn("4.00 the week before", section)
+        self.assertIn(">4<", section)
+        self.assertIn("+1 (+33.3%)", section)
+
+    def test_a_week_with_no_new_ratings_says_none(self):
+        _, section = self.section(
+            average=0, average_before=4.0, count=0, count_before=3
+        )
+        self.assertIn(">none<", section)
+        self.assertIn("no ratings to compare", section)
+
+    def test_draws_the_star_breakdown_from_five_stars_to_one(self):
+        html, _ = self.section(breakdown={5: 6, 4: 3, 3: 2, 2: 1, 1: 0})
+        bars = chart(html, "New ratings by star level")
+        self.assertEqual(
+            bars["data"]["labels"], ["5 star", "4 star", "3 star", "2 star", "1 star"]
+        )
+        self.assertEqual(values(bars), [6, 3, 2, 1, 0])
+        self.assertEqual(bars["options"]["indexAxis"], "y")
+
+    def test_a_card_per_review_newest_first_in_the_full_width_card(self):
+        _, section = self.section(
+            cards=[
+                review("second text", at=datetime(2026, 10, 30)),
+                review("first text", at=datetime(2026, 10, 27)),
+            ]
+        )
+        self.assertIn('class="card wide"', section)
+        self.assertEqual(section.count('class="note review"'), 2)
+        self.assertLess(section.index("second text"), section.index("first text"))
+        self.assertIn("2 with text", section)
+
+    def test_a_card_shows_stars_title_text_and_date(self):
+        _, section = self.section(
+            cards=[
+                review("Works well", stars=4, title="Solid", at=datetime(2026, 10, 28))
+            ]
+        )
+        self.assertIn("★★★★☆", section)
+        self.assertIn('aria-label="4 out of 5 stars"', section)
+        self.assertIn('<p class="rtitle">Solid</p>', section)
+        self.assertIn('<p class="rtext">Works well</p>', section)
+        self.assertIn("28 Oct 2026", section)
+
+    def test_a_review_without_a_title_or_a_text_leaves_those_out(self):
+        _, titled = self.section(cards=[review("", title="Only a title")])
+        _, texted = self.section(cards=[review("Only text")])
+        self.assertIn("Only a title", titled)
+        self.assertNotIn('class="rtext"', titled)
+        self.assertNotIn('class="rtitle"', texted)
+
+    def test_each_label_shows_as_a_tag(self):
+        _, section = self.section(
+            cards=[
+                review("a", label=Label.NEW),
+                review("b", label=Label.EDITED),
+                review("c", label=Label.NEW_OR_EDITED),
+            ]
+        )
+        self.assertIn('<span class="tag new">New</span>', section)
+        self.assertIn('<span class="tag edited">Edited</span>', section)
+        self.assertIn('<span class="tag new_or_edited">New or edited</span>', section)
+
+    def test_a_review_only_the_report_has_shows_its_language_tag(self):
+        _, tagged = self.section(cards=[review("Sehr gut", language="de")])
+        _, untagged = self.section(cards=[review("Great")])
+        self.assertIn('<span class="tag">de</span>', tagged)
+        self.assertNotIn('<span class="tag">', untagged)
+
+    def test_a_translation_shows_with_the_original_below_it(self):
+        _, section = self.section(cards=[review("Very good", original_text="Sehr gut")])
+        self.assertLess(section.index("Very good"), section.index("Sehr gut"))
+        self.assertIn(
+            '<p class="original"><span class="tag">original</span> Sehr gut</p>',
+            section,
+        )
+
+    def test_an_untranslated_review_has_no_original(self):
+        _, section = self.section(cards=[review("Great")])
+        self.assertNotIn('class="original"', section)
+
+    def test_a_replied_review_is_marked_and_shows_the_reply(self):
+        _, section = self.section(
+            cards=[review("Bad", reply="We are sorry"), review("Fine")]
+        )
+        self.assertEqual(section.count('<span class="tag replied">replied</span>'), 1)
+        self.assertIn('<p class="reply"><b>Your reply</b> We are sorry</p>', section)
+
+    def test_the_reply_text_is_left_out_of_the_printed_pdf(self):
+        html, _ = self.section(cards=[review("Bad", reply="We are sorry")])
+        printed = html[html.index("@media print") :]
+        self.assertIn(".reply { display: none; }", printed)
+        self.assertNotIn(
+            ".reply { display: none; }", html[: html.index("@media print")]
+        )
+
+    def test_review_text_is_escaped(self):
+        html, _ = self.section(cards=[review("<script>alert(1)</script>")])
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+
+    def test_no_reviews_says_so(self):
+        _, section = self.section(cards=[])
+        self.assertIn("No reviews with text in this range.", section)
+        self.assertIn("0 with text", section)
+
+    def test_a_range_the_sources_miss_part_of_gets_the_too_late_notice(self):
+        gaps = [Period(date(2026, 10, 26), date(2026, 10, 27))]
+        _, section = self.section(uncovered=gaps)
+        self.assertIn('class="caution"', section)
+        self.assertIn("Reviews from 26 Oct to 27 Oct 2026 may be missing", section)
+
+    def test_a_fully_covered_range_has_no_notice(self):
+        _, section = self.section()
+        self.assertNotIn("caution", section)
+
+    def test_several_gaps_are_all_named(self):
+        gaps = [
+            Period(date(2026, 10, 26), date(2026, 10, 27)),
+            Period(date(2026, 10, 31), date(2026, 11, 1)),
+        ]
+        _, section = self.section(uncovered=gaps)
+        self.assertIn(
+            "26 Oct to 27 Oct 2026, 31 Oct to 1 Nov 2026 may be missing", section
+        )
+
+    def test_a_failed_source_shows_its_error_in_a_full_width_card(self):
+        failure = Failure("Play reviews", "403 Forbidden")
+        html = renderer.render(report(app("first", reviews_section=failure)))
+        section = part(html, 'id="app-0-reviews"')
+        self.assertIn('class="card wide"', section)
+        self.assertIn("Play reviews: 403 Forbidden", section)
+
+    def test_an_unreachable_range_says_so_and_is_no_problem(self):
+        html = renderer.render(report(app("first", reviews_section=NO_REVIEWS)))
+        self.assertIn("not available for this range", part(html, 'id="app-0-reviews"'))
+        self.assertNotIn('class="problems"', html)
+
+
 class DefaultGlanceTest(unittest.TestCase):
-    def test_is_net_growth_alone(self):
+    def test_is_net_growth_and_the_store_rating(self):
         html = renderer.render(report(app("first", growth(value=69, previous=52))))
         glance = part(html, '<section class="glance"')
-        self.assertEqual(re.findall(r"<th>(.*?)</th>", glance), ["App", "Net growth"])
+        self.assertEqual(
+            re.findall(r"<th>(.*?)</th>", glance), ["App", "Net growth", "Store rating"]
+        )
         self.assertIn(">+49<", glance)
+        self.assertIn(">3.67<", glance)
 
-    def test_the_email_body_line_is_net_growth(self):
+    def test_the_email_body_lines_are_net_growth_and_the_store_rating(self):
         lines = renderer.summary(report(app("first", growth(value=69, previous=52))))
         self.assertEqual(
             lines[2:],
             [
                 "first",
                 "  Net growth, 19 Oct to 25 Oct 2026: +49, +22 (+81.5%), better",
+                "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better",
             ],
         )
 
@@ -517,8 +811,8 @@ class DefaultGlanceTest(unittest.TestCase):
         failure = Failure("Play report bucket", "403 Forbidden")
         lines = renderer.summary(report(app("first", listing_section=failure)))
         self.assertIn("  first, Play report bucket: 403 Forbidden", lines)
-        self.assertEqual(lines[-1][:12], "  Net growth")
-        self.assertNotIn("see Problems", lines[-1])
+        self.assertEqual(lines[-2][:12], "  Net growth")
+        self.assertNotIn("see Problems", lines[-2] + lines[-1])
 
 
 class PageTest(unittest.TestCase):

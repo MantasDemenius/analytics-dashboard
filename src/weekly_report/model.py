@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
+from enum import Enum
 
 from weekly_report.periods import TREND_PERIODS, Coverage, Period
 
@@ -66,11 +67,11 @@ class Metric:
         )
 
     @classmethod
-    def ratio(cls, part: Metric, whole: Metric) -> Metric:
-        """`part` as a percent of `whole`, from their sums, never an average of daily ratios."""
+    def ratio(cls, part: Metric, whole: Metric, per: float = 100) -> Metric:
+        """`part` per `per` of `whole` (a percent by default), from their sums, never an average of daily ratios."""
 
         def percent(numerator: float, denominator: float) -> float:
-            return numerator / denominator * 100 if denominator else 0.0
+            return numerator / denominator * per if denominator else 0.0
 
         return cls(
             value=percent(part.value, whole.value),
@@ -124,6 +125,48 @@ class Listing:
     conversion: Metric
 
 
+class Label(Enum):
+    NEW = "new"
+    EDITED = "edited"
+    NEW_OR_EDITED = "new or edited"
+
+
+@dataclass(frozen=True)
+class Review:
+    """One review card. `text` is the English translation when there is one, shown above
+    `original_text`; `language` is set only on a review the Reviews API did not return."""
+
+    stars: int
+    title: str
+    text: str
+    original_text: str | None
+    language: str | None
+    label: Label
+    at: datetime
+    reply: str | None
+
+    @property
+    def replied(self) -> bool:
+        return self.reply is not None
+
+
+@dataclass(frozen=True)
+class Reviews:
+    """The ratings and reviews of a range.
+
+    `store_rating` is the 28 day average rating as of each period's last day. `uncovered`
+    holds the days neither the Reviews API nor the reviews report can account for.
+    """
+
+    coverage: Coverage
+    store_rating: Metric
+    new_ratings: Metric
+    new_average: Metric
+    breakdown: dict[int, int]
+    reviews: tuple[Review, ...]
+    uncovered: tuple[Period, ...] = ()
+
+
 @dataclass(frozen=True)
 class AppReport:
     """One app's sections. Every field after `app` is a section or the Failure that replaced it."""
@@ -131,6 +174,7 @@ class AppReport:
     app: str
     growth: Growth | Unavailable | Failure
     listing: Listing | Unavailable | Failure
+    reviews: Reviews | Unavailable | Failure
 
     def failures(self) -> list[Failure]:
         sections = (getattr(self, f.name) for f in fields(self) if f.name != "app")

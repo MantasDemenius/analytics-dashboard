@@ -14,10 +14,10 @@ from pathlib import Path
 
 from weekly_report import mail, pdf
 from weekly_report.config import AppConfig, ConfigError, load_apps, load_report
-from weekly_report.model import AppReport, Failure, Report
+from weekly_report.model import AppReport, Failure, Report, Reviews, Unavailable
 from weekly_report.periods import Period, week_ending_by
 from weekly_report.render import render, summary, write
-from weekly_report.sources import play_bucket
+from weekly_report.sources import play_bucket, play_reviews
 
 OUT_DIR = Path("out")
 PDF_PATH = OUT_DIR / "report.pdf"
@@ -90,11 +90,27 @@ def from_bucket[T](
     )
 
 
+def from_play_reviews(
+    app: AppConfig, today: date, period: Period | None
+) -> Reviews | Unavailable | Failure:
+    return attempt(
+        play_reviews.SOURCE,
+        lambda: play_reviews.reviews(
+            play_bucket.bucket_reader(app),
+            play_reviews.api_reader(app),
+            app.package,
+            today,
+            period,
+        ),
+    )
+
+
 def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
     return AppReport(
         app=app.name,
         growth=from_bucket(app, today, period, play_bucket.growth),
         listing=from_bucket(app, today, period, play_bucket.listing),
+        reviews=from_play_reviews(app, today, period),
     )
 
 

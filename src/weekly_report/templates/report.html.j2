@@ -57,6 +57,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
 .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 10px; break-inside: avoid; display: flex; flex-direction: column; }
 .kpi .l { font-size: 12px; color: var(--ink2); font-weight: 550; }
+.kpi .what { font-size: 10.5px; color: var(--muted); }
 .kpi .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .kpi .d { font-size: 12.5px; font-weight: 550; }
 .kpi .was { font-size: 12px; color: var(--muted); margin-left: 6px; }
@@ -77,6 +78,23 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 .notes { display: flex; flex-direction: column; gap: 12px; }
 .note { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; break-inside: avoid; }
 
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pair .l { display: block; font-size: 12px; color: var(--ink2); font-weight: 550; }
+.pair .v { display: block; font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.pair .d { font-size: 12.5px; font-weight: 550; }
+.pair .was { font-size: 12px; color: var(--muted); margin-left: 6px; }
+.caution { background: #fff6e0; border: 1px solid #ecd49a; border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; font-size: 12.5px; }
+.review p { margin: 6px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+.rhead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.stars { color: #c98a12; letter-spacing: .1em; font-size: 14px; }
+.tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--plane); color: var(--ink2); }
+.tag.new { background: #e3f4ec; color: var(--good); }
+.tag.edited, .tag.new_or_edited { background: #fdf0d8; color: #8a5a00; }
+.tag.replied { background: #e4eefb; color: #1b57a6; }
+.rtitle { font-weight: 650; }
+.original { font-size: 12px; color: var(--muted); }
+.reply { font-size: 12.5px; border-left: 3px solid var(--line); padding-left: 10px; color: var(--ink2); }
+
 .chart { position: relative; break-inside: avoid; }
 .chart canvas { display: block; }
 
@@ -84,6 +102,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 @media screen and (max-width: 700px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid { grid-template-columns: minmax(0, 1fr); }
+  .pair { grid-template-columns: minmax(0, 1fr); }
   .top { flex-direction: column; align-items: flex-start; }
   .key { text-align: left; }
   .nav { display: none; }
@@ -102,6 +121,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
   .grid { gap: 8px; margin-bottom: 8px; }
   .card { padding: 12px 14px 14px; }
   .card > header { break-after: avoid; }
+  .reply { display: none; }
   .app + .app { margin-top: 0; }
   .chart canvas { width: 100% !important; height: auto !important; }
 }
@@ -164,6 +184,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
     </div>
     {% else %}
     <div class="kpi" title="{{ shown.range }}"><span class="l">{{ shown.label }}</span>
+      {% if shown.note %}<span class="what">{{ shown.note }}</span>{% endif %}
       <span class="v">{{ shown.value }}</span>
       <span>{{ m.change(shown) }}<span class="was">{{ shown.was }}</span></span>
       {% if shown.trend %}

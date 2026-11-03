@@ -2,7 +2,7 @@ import unittest
 from datetime import date, datetime
 
 from weekly_report.mail import message, subject
-from weekly_report.model import AppReport, Growth, Listing, Metric, Report
+from weekly_report.model import AppReport, Growth, Listing, Metric, Report, Reviews
 from weekly_report.periods import Coverage, Period
 
 WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
@@ -24,6 +24,14 @@ REPORT = Report(
                 visitors=Metric(400, 380),
                 acquisitions=Metric(50, 38),
                 conversion=Metric(12.5, 10.0),
+            ),
+            Reviews(
+                Coverage(WEEK),
+                store_rating=Metric(3.67, 3.5),
+                new_ratings=Metric(4, 3),
+                new_average=Metric(4.5, 4.0),
+                breakdown={},
+                reviews=(),
             ),
         ),
     ),

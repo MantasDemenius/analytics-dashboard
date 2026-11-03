@@ -161,6 +161,21 @@ review written 8 days before a run is gone from the API unless edited, but shoul
 then. When a run is so late that neither source can be trusted for the whole week, the report says
 so. The store rating is the reviews CSV's 28 day average.
 
+Built in `sources/play_reviews.py` (2026-11-03):
+
+- **Ratings** come from the reviews CSV alone, counted by `Review Submit Date and Time` (UTC day):
+  the range's new ratings average and count, the star breakdown, and the store rating, the average
+  of the 28 days ending on a day. A stretch of 28 days with no rating carries the average of the
+  newest 28 days that had one, and the card shows "none" before any rating exists.
+- **Cards** are the reviews with a title or text whose submit or last update day falls in the
+  range. Matched by `reviewId`, the API's newer text, stars, translation and reply win; the
+  label comes from the CSV's submit day (new, else edited). A review only the API has is "new or
+  edited". Only a review the API does not return shows its CSV language tag.
+- **Too late:** the API is trusted for days after today minus 7, the CSV for older days. A day
+  older than that whose month has no CSV file is listed in the section's "may be missing" notice;
+  a range with no such day covered at all is "not available for this range". The API is not asked
+  when the range ended before its window.
+
 ## Play report bucket
 
 Mapped on 2026-10-31 by reading the first app's bucket with its report service account (holding
