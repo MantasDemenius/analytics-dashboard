@@ -1,9 +1,10 @@
 # Decisions so far
 
 Outcome of a grilling session held on 2026-10-27, before this project had any code, and later
-changes made in this repo (the language moved from Dart to Python on the same day). Nothing here is
-specced yet. The unverified facts at the bottom are GitHub tickets, and everything else still to be
-grilled and specced is on the pinned Roadmap issue.
+changes made in this repo (the language moved from Dart to Python on the same day), plus the phase 1
+grilling session of 2026-11-03 ("Phase 1 design" below). Nothing here is specced yet. The
+unverified facts at the bottom are GitHub tickets, and everything else still to be specced is on
+the pinned Roadmap issue.
 
 App-specific details (which apps, their package names, Firebase projects, AdMob IDs, where their
 own repos and docs live) are not in this repo. They are in the gitignored `config/apps.md` on the
@@ -26,19 +27,18 @@ weekly report covering every app, built so later apps plug in through config.
   the email carries a PDF and not the HTML.
 - Runs every Monday morning on the author's **PC** through Windows Task Scheduler, with "run task
   as soon as possible after a scheduled start is missed" so it catches up at the next logon. It can
-  also be run by hand any time.
+  also be run by hand any time, for any date range.
 - The author cares how it looks. The HTML design is decided on a throwaway prototype first, so the
   layout is picked on real output, not described in prose.
-- Every number shows its change against the previous week.
+- Every number shows its change against the previous period of the same length.
 
 ## Hard constraints
 
 - **Public repo, private files local.** The repo is public on GitHub
   (`MantasDemenius/analytics-dashboard`). Code, HTML template and docs are public. Everything
   private lives inside the local repo but gitignored: `config/` (the real config, service account
-  keys, the OAuth client file, saved refresh token and the app notes), `history/` (weekly numbers,
-  including earnings), `out/` (generated HTML and PDF reports, which carry feedback text and users'
-  emails). A `config.example.toml` with placeholder values is what gets committed. GitHub secret
+  keys, the OAuth client file, saved refresh token and the app notes), `out/` (the latest
+  generated HTML and PDF report, which carry feedback text and users' emails) and `logs/`. A `config.example.toml` with placeholder values is what gets committed. GitHub secret
   scanning and push protection are on by default for public repos and are a safety net, not the
   plan.
 - **Nothing app-specific in the repo**, docs included: no app names, package names, Firebase
@@ -46,12 +46,12 @@ weekly report covering every app, built so later apps plug in through config.
   are technically public (they ship in the APK), but the author does not want them published. Code,
   tests and docs stay generic; `config.example.toml` and test fixtures use made-up values.
 - **Free.** No paid service, no billing account turned on, no Claude tokens on the weekly path.
-- **Text is never stored.** Review text and feedback text are fetched fresh each run and never
-  written to the history folder. The apps promise users their feedback can be deleted on request;
-  a stored copy would break that promise.
-- **History is numbers only**, one snapshot per week, in the gitignored `history/` folder on the
-  PC. It is what makes trends (earnings growth, installs growth) possible past each API's own
-  window.
+- **Text is never stored.** Review text and feedback text are fetched fresh each run and live only
+  in the one latest report in `out/`, overwritten every run. The apps promise users their feedback
+  can be deleted on request; a stored copy would break that promise.
+- **No history in phase 1** (2026-11-03): every number and trend is recomputed from the sources on
+  each run, since every chart fits inside the sources' own windows. If history is ever added (for
+  trends past Crashlytics' 90 days), it holds numbers only.
 - **Read only credentials.** Every key, role and scope this tool holds only reads. Two exceptions,
   both agreed with the author on 2026-10-30: `gmail.send`, because the report has to be emailed (it
   can send mail but not read the inbox), and Play Console's "Reply to reviews", because the Reviews
@@ -149,8 +149,10 @@ the `reviews` REST reference, and Play Console help article 6135870 on monthly r
 - **Store rating:** neither reviews source can give it, because star-only ratings are missing
   from the API and averaging only text reviews would skew it. It comes from the bucket's ratings
   overview CSV, which lags about 7 days and has glitches (see "Play report bucket").
-- **This week's new ratings:** the reviews CSV carries every rating, star-only ones included, so
-  the average of the week's new ratings can be computed from its "Star Rating" column.
+- **New ratings in a range:** the reviews CSV carries every rating, star-only ones included, so
+  the average of a range's new ratings is computed from its "Star Rating" column. Checked on
+  2026-11-03: Play Console's "Average rating (last 28 days)" read 3.667, exactly the reviews CSV's
+  last 28 days (one 1 star and two 5 star ratings).
 
 Decision: review text comes from the Reviews API, which has no posting lag, merged by review with
 the reviews CSV, which covers the days the API window has already dropped when a run is late. A
@@ -201,7 +203,9 @@ only the read only Play permission). The bucket name lives in the app's config, 
   83 / 22, and 3.6521 is 84 / 23 after one 1 star rating), but single rows jump to 1.0 or 0.0 and
   September wandered between 2.5 and 4.0 in a way no lifetime average could. A lifetime average
   rebuilt from every reviews CSV does not match it either (3.80 to 3.89 over the same days), so it
-  cannot stand in. Which value the report shows as the store rating is an open question below.
+  cannot stand in. On 2026-11-03 Play Console showed a "Default Google Play rating" of 3.750 (24
+  users), which no export carries; the total appears to follow it with the file's 7 day lag
+  (see "Unverified" below).
 - **Reviews CSV columns:** `Package Name`, `App Version Code`, `App Version Name`, `Reviewer
   Language`, `Device`, `Review Submit Date and Time`, `Review Submit Millis Since Epoch`, `Review
   Last Update Date and Time`, `Review Last Update Millis Since Epoch`, `Star Rating`, `Review
@@ -257,7 +261,7 @@ scope `admob.report`), for the last 7 days:
 - **Days with no traffic have no row**: 7 days by 2 units came back as 9 rows. The report fills
   missing unit days with zero.
 - **Earnings growth over time needs no history of our own:** grouped by `MONTH`, the API returned
-  27 months back. The weekly snapshot is still kept for week over week changes.
+  27 months back.
 
 ## Report layout
 
@@ -310,6 +314,116 @@ with Chrome 156 on the author's PC, 5 runs per variant, each checked on the rend
 - **Exit code says nothing about the render:** Chrome returned 0 for blank PDFs too, so the run
   checks the output another way (page count or size), not the exit code.
 
+## Phase 1 design
+
+Grilled with the author on 2026-11-03. Sources lag differently: reviews, feedback, Crashlytics
+and AdMob are current to yesterday, Play vitals about 3 days behind (its API reports a freshness
+date), the bucket 4 to 7 days.
+
+**Running it**
+
+- `uv run weekly-report [--from YYYY-MM-DD --to YYYY-MM-DD] [--email]`, dates inclusive. Every run
+  builds the HTML and opens it. `--email` also prints the PDF and sends it; the scheduled task
+  passes `--email`, so a run by hand never mails by accident. The run keeps no state, so it cannot
+  know whether it already sent.
+- **With no dates:** periods are Monday to Sunday. Fast sources report the week that just ended;
+  each lagging source reports its newest Monday to Sunday week that is complete in its data
+  (normally the week before), and each section header shows its own range. So the scheduled run
+  always carries complete numbers, and if a lag shrinks the report catches up by itself.
+- **With dates:** one range for every section, and each source gives what it has: missing days
+  show "data to <date>", a source whose window does not reach shows "not available for this
+  range" (Crashlytics reaches back 90 days, the Reviews API 7, so older reviews come from the CSV
+  only).
+- **Comparisons:** every change is against the period of the same length just before. Where a
+  source has only part of the range, the previous period is cut to the same days, so 3 days are
+  never set against 7. Sparklines and trend charts show 12 periods of the range's length.
+  Levels (store rating, vitals) show the value at the end of the range.
+- **Days** are each source's own: Pacific Time for vitals and AdMob (their only supported zone),
+  UTC for Crashlytics, undocumented (likely Pacific) for the bucket. No conversion.
+- `scripts/schedule_task.ps1` registers the Task Scheduler task: Monday 08:00, only when the author
+  is logged on, catch up after a missed start, `--email`, output to the gitignored `logs/`.
+  Running it again replaces the task.
+
+**Section rules**
+
+- Installs: `Daily User Installs` and `Daily User Uninstalls` (see "Play report bucket").
+- Store rating card: `Total Average Rating`, labelled "Google Play rating, as of <date>", taking
+  the most common value in the file's last 7 non-zero rows to ride over glitches. If the check
+  under "Unverified" fails, the card falls back to the 28 day average computed from the reviews
+  CSV. The ratings section always shows the range's new ratings (average and count).
+- Reviews: Reviews API requested with `translationLanguage` English; a translated review shows the
+  translation in `text` with `originalText` below in smaller type. A review only in the CSV shows
+  its original with a language tag. A review the CSV already holds is labelled new or edited by
+  its submit date; one only the API has is labelled "new or edited". Review ids are not
+  remembered. A review card marks "replied"; the reply text is in the HTML only.
+- Vitals: user-perceived crash and ANR rate, 28 day user weighted
+  (`userPerceivedCrashRate28dUserWeighted`, `userPerceivedAnrRate28dUserWeighted`), labelled "28
+  days", against Play's bad behaviour thresholds of 1.09% and 0.47%. Google's API docs do not tie a
+  metric to the threshold in words; Play judges on a 28 day average, which this is. The change is
+  against the value one period earlier; the sparkline samples it per period.
+- Crashlytics: every issue, new and regressed first, then by users affected, events breaking ties.
+- Feedback: reports whose `createdAt` falls in the range, as cards (kind, stars, liked items, app
+  and Android version, message, error), plus the current count of reports not yet `handled`. The
+  tool only reads and never sets `handled`.
+- AdMob: as under "AdMob report".
+
+**Output and failure**
+
+- `out/` keeps only the latest report, overwritten every run; the author's inbox keeps the PDFs.
+- The emailed PDF carries feedback text but never a bug report's `email` or `appId`; the local HTML
+  shows everything. The app's deletion procedure gains a step to search Gmail for report emails
+  quoting the user (a ticket in the app's repo).
+- Email subject "Weekly app report, <range>"; the body is the at-a-glance table as plain text, with
+  the PDF attached.
+- A source that fails (expired token, outage, missing files) does not stop the report: its section
+  shows the error, a problems box at the top lists every failure, and the run exits non-zero. If
+  Gmail fails or Chrome prints a blank PDF, the run logs to `logs/` and exits non-zero. No other
+  alerts.
+- Chrome is found at its standard install paths, with an optional override in `config/report.toml`.
+
+**Code**
+
+```
+src/weekly_report/
+  __main__.py        command line, runs everything
+  config.py          reads config/apps/*.toml and config/report.toml
+  periods.py         picks each source's period
+  model.py           plain dataclasses: Metric(value, previous, series), sections, AppReport
+  sources/           play_bucket.py, play_api.py, crashlytics.py, feedback.py, admob.py
+  render.py          Jinja2 template to one HTML file, Chart.js inlined
+  pdf.py             headless Chrome, then a page count check
+  mail.py            Gmail send
+  templates/report.html.j2
+  vendor/chart.umd.min.js   Chart.js 4.4.1, MIT, vendored (agreed 2026-11-03)
+```
+
+- Each source splits into a thin `fetch` (network calls only) and pure parse and summarise
+  functions (bytes or dicts in, dataclasses out). Tests cover the pure functions with made-up
+  fixtures and never call Google; `scripts/smoke_check.py` and real runs prove `fetch`.
+- The code loops over every app config but is built and tested with one app. How a second app
+  with less data shows is left until one joins.
+- First slice (tracer bullet): Play new installs for the default period, from config through
+  HTML, PDF and email. It proves UTF-16 parsing, the lag aware period picker and the comparison
+  first; every other section is its own ticket on top.
+
+**Running it remotely**
+
+- From the phone through Remote Control into any Claude session open on the PC, whatever project
+  it is in. The PC is always on, and the keys never leave it.
+- A global skill in the author's Claude config folder (not committed, since it holds a local
+  path), `/run-report [from] [to]`, runs `uv run --directory <repo> weekly-report --email
+  --no-open` with the dates given or the default period. `--no-open` keeps an unattended PC from
+  showing the report on screen. The repo's README documents what it runs.
+- **The command line never prints review or feedback text**, only the period, counts, the
+  problems list and where the files went. The skill passes on only that and never opens the
+  report files, so no user-written text reaches a Claude transcript. The author reads the report,
+  feedback included, in the emailed PDF.
+- A remote run costs a few thousand Claude tokens; the weekly run stays on Task Scheduler with
+  none.
+- It is the last phase 1 ticket, after email works. Its acceptance includes one real run from the
+  phone in a session for another project, which settles what Claude Code's docs leave open
+  (whether a skill can be invoked over Remote Control).
+
 ## Outside this project
 
 Urgent problems are not this tool's job. Crashlytics' own new, regressed and trending issue emails
@@ -327,14 +441,28 @@ repo. This tool sends no alerts of its own.
   Firestore.
 - **A weekly Claude routine publishing a claude.ai artifact:** pretty and could interpret, but costs
   Claude budget every week (reading a 30 to 60 KB report is roughly a short chat), needs Google
-  credentials in a cloud agent, and drifts run to run. Kept only as an on demand extra: the author
-  can ask Claude to publish a given week's HTML when they want it on their phone interactively.
+  credentials in a cloud agent, and drifts run to run. An on demand artifact was then offered
+  and declined on 2026-11-03: Claude must read a page to publish it, so a full report would put
+  feedback text in a transcript, and a numbers only one leaves out the feedback the author mostly
+  cares about. Email is the remote path.
+- **Running remotely from a Claude cloud session** (2026-11-03): it would work with the PC off,
+  but the service account key and both OAuth tokens would sit in the cloud environment's plain
+  environment variables, which Claude Code's docs warn against for secrets (its network secrets
+  only attach header keys, and Google's keys must be exchanged by the tool itself), and report
+  text would be built next to an agent holding `gmail.send`. A cloud session also cannot reach
+  the PC. The one workable bridge, a PC task polling GitHub for a trigger from the author's
+  account, is kept as an option if Remote Control proves annoying: it costs a poller, `gh`
+  signed in on the PC, an author-only filter and a public trace unless a private repo is used.
 - **Crashlytics BigQuery export** (sandbox, as the Crashlytics source): free, but the export has
   no issue signals or state, so new and regressed issues cannot be told apart once its 60 day
   tables expire. It also needs a console link by the author, the sessions export for crash free
   users, a daily batch lag, and `google-cloud-bigquery`. Kept only as the fallback named under
   "Crashlytics source".
 - **A GitHub issue per week:** cannot show charts.
+- **A weekly history snapshot** (planned until 2026-11-03): every chart fits in the sources' own
+  windows, so it only added state, an empty first run and a gap after a missed week.
+- **Mocking the Google clients in tests:** such tests mostly test the mocks.
+- **Chart.js from a CDN:** printing would depend on the network and its timing.
 - **Living inside the first app's repo:** the author wants it for later apps too.
 - **Dart** (the first choice, dropped the same day): the author knows it and `dart compile exe`
   gives Task Scheduler one native binary, but the work is mostly Google API glue, CSV parsing and
@@ -345,29 +473,11 @@ repo. This tool sends no alerts of its own.
 
 ## Unverified, check before the spec rests on it
 
-None open.
+1. Does the ratings CSV's `Total Average Rating` equal Play Console's "Default Google Play
+   rating"? On 2026-11-03 Console showed 3.750; once the file's rows for late October post, its
+   total should read the same. If not, the store rating card uses the fallback under "Phase 1
+   design".
 
 ## Open questions for the spec
 
-- The emailed PDF puts feedback text, and any email address a bug report carries, into the
-  author's Gmail inbox, which is a copy outside Firestore. Does the PDF carry full feedback text,
-  or counts plus text with emails and App IDs left out, while the local HTML shows everything?
-- Should the report mark a review as "edited" rather than "new"? The CSV's submit date tells them
-  apart, and on the real bucket the reviews CSV was only a day behind, so only the newest day or
-  so would lack it. Is that gap labelled "new or edited", or are review ids remembered in history
-  (which is numbers only today)?
-- Which "average rating" leads: the store rating, or the average of this week's new ratings? They
-  tell different stories; the prototype shows both.
-- Which week does a Monday run report? The bucket lags 4 to 7 days (installs, listing, ratings)
-  while the APIs are current. Options: every section reports the week that just ended and bucket
-  numbers show "data to <date>"; every section reports the week before it so all numbers cover
-  the same complete days; or bucket sections report their own latest complete 7 days, labelled.
-- Which value is the store rating, given the ratings CSV's glitches? The latest
-  `Total Average Rating` can be 1.0 or 0.0 on a bad day. Compare it against the rating Play
-  Console shows before picking a rule (for example, the most common value over the last 7 rows).
-- Reviews not in English: show the original, the Reviews API's translation, or both?
-- Crashlytics issue order: new and regressed first (as prototyped), or by users affected, or by
-  events?
-- When a second app lacks some history, do its rows show "n/a" or disappear?
-- What the vitals figures mean: confirm whether the Reporting API's crash and ANR rates are 28 day
-  rolling values or weekly ones before labelling them.
+None open. Phase 1 is grilled; the spec is next.
