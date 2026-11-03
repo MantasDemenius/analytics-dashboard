@@ -1,0 +1,116 @@
+"""Builds the weekly report for every app config, opens it, and with --email prints and mails it.
+
+Prints only the period, counts, problems and file paths, never review or feedback text.
+Exits non-zero when a source fails or the PDF or email cannot be made.
+"""
+
+import argparse
+import logging
+import sys
+import webbrowser
+from collections.abc import Callable
+from datetime import date, timedelta
+from pathlib import Path
+
+from weekly_report import mail, pdf
+from weekly_report.config import AppConfig, ConfigError, load_apps, load_report
+from weekly_report.model import AppReport, Failure, Report
+from weekly_report.periods import week_ending_by
+from weekly_report.render import render, summary, write
+from weekly_report.sources import play_bucket
+
+OUT_DIR = Path("out")
+PDF_PATH = OUT_DIR / "report.pdf"
+LOG_FILE = Path("logs/weekly-report.log")
+
+log = logging.getLogger("weekly_report")
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="weekly-report", description=__doc__)
+    parser.add_argument(
+        "--email", action="store_true", help="print the PDF and email it"
+    )
+    parser.add_argument(
+        "--no-open", action="store_true", help="do not open the report in a browser"
+    )
+    return parser.parse_args(argv)
+
+
+def attempt[T](source: str, build: Callable[[], T]) -> T | Failure:
+    """Runs one source; a failure replaces its section instead of stopping the report."""
+    try:
+        return build()
+    except Exception as error:
+        log.exception("%s failed", source)
+        return Failure(source, str(error) or type(error).__name__)
+
+
+def app_report(app: AppConfig, today: date) -> AppReport:
+    return AppReport(
+        app=app.name,
+        growth=attempt(
+            play_bucket.SOURCE,
+            lambda: play_bucket.installs_growth(
+                play_bucket.bucket_reader(app), app.package, today
+            ),
+        ),
+    )
+
+
+def build_report(apps: list[AppConfig], today: date) -> Report:
+    return Report(
+        period=week_ending_by(today - timedelta(days=1)),
+        apps=tuple(app_report(app, today) for app in apps),
+    )
+
+
+def email_report(report: Report, html: Path, chrome: Path | None, to: str) -> bool:
+    try:
+        pages = pdf.print_pdf(
+            pdf.find_chrome(chrome), html, PDF_PATH, min_pages=len(report.apps)
+        )
+    except Exception as error:
+        log.exception("printing the PDF failed")
+        print(f"PDF failed: {error} (see {LOG_FILE})")
+        return False
+    print(f"PDF:  {PDF_PATH} ({pages} page{'' if pages == 1 else 's'})")
+    try:
+        mail.send(mail.message(to, report, PDF_PATH.read_bytes()))
+    except Exception as error:
+        log.exception("sending the email failed")
+        print(f"Email failed: {error} (see {LOG_FILE})")
+        return False
+    print("Email sent")
+    return True
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    LOG_FILE.parent.mkdir(exist_ok=True)
+    logging.basicConfig(
+        handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8", delay=True)],
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    try:
+        report_config = load_report()
+        apps = load_apps()
+    except ConfigError as error:
+        sys.exit(str(error))
+
+    report = build_report(apps, date.today())
+    PDF_PATH.unlink(missing_ok=True)
+    html = write(render(report), OUT_DIR)
+    print("\n".join(summary(report)))
+    print(f"\nHTML: {html}")
+    if not args.no_open:
+        webbrowser.open(html.resolve().as_uri())
+
+    emailed = not args.email or email_report(
+        report, html, report_config.chrome, report_config.recipient
+    )
+    sys.exit(0 if emailed and not report.problems else 1)
+
+
+if __name__ == "__main__":
+    main()
