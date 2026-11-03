@@ -331,9 +331,11 @@ scope `admob.report`), for the last 7 days:
 - **The report is the whole AdMob account, not one app:** it is read once and every app shows the
   same section. With one app that is right. When a second app joins, each needs its own filter:
   the `APP` value is AdMob's app id, not the package, so it would be a new key in the app config.
-- **Unverified:** days are Pacific, but "yesterday" is the local date minus one. A Monday 08:00
-  run in a zone ahead of Pacific by under 10 hours can reach a Pacific Sunday that is still
-  running, so its last day may be partial. Estimated earnings are also revised by AdMob later.
+- **Run time (settled):** days are Pacific, but "yesterday" is the local date minus one. A
+  Monday 08:00 run in Vilnius reaches a Pacific Sunday that is still running, so its last day
+  would be partial. Pacific midnight is at most 10:00 Vilnius all year, so the Monday **11:00**
+  start leaves an hour's margin and the Sunday is complete. Separately, AdMob revises estimated
+  earnings later, so a number can still move after the report.
 
 ## Report layout
 
@@ -412,9 +414,14 @@ date), the bucket 4 to 7 days.
   Levels (store rating, vitals) show the value at the end of the range.
 - **Days** are each source's own: Pacific Time for vitals and AdMob (their only supported zone),
   UTC for Crashlytics, undocumented (likely Pacific) for the bucket. No conversion.
-- `scripts/schedule_task.ps1` registers the Task Scheduler task: Monday 08:00, only when the author
-  is logged on, catch up after a missed start, `--email`, output to the gitignored `logs/`.
-  Running it again replaces the task.
+- `scripts/schedule_task.ps1` registers the Task Scheduler task: Monday 11:00 (see "AdMob report" for
+  why not 08:00), only when the author is logged on, catch up after a missed start, `--email`,
+  output appended to `logs/scheduled-run.log` (gitignored). Running it again replaces the task.
+  The author registers it with `powershell -ExecutionPolicy Bypass -File scripts\schedule_task.ps1`
+  from the repo; the script does not run on import, so its trigger, settings and action can be
+  built without registering.
+- Output is UTF-8 whatever it is redirected to (the scheduled run redirects to a file, and the
+  Windows legacy codepage cannot encode the minus sign in the summary).
 
 **Section rules**
 
