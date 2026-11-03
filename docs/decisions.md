@@ -106,14 +106,23 @@ Settled on 2026-10-30: the Crashlytics REST API at `firebasecrashlytics.googleap
 nothing.
 
 - **Every issue:** the `topIssues` report (`projects/{project}/apps/{app_id}/reports/topIssues`)
-  returns one group per issue and pages with `pageSize`, `nextPageToken` and `totalSize`, so the
-  report reads every page rather than a top N. Its `interval` filter accepts anything from 90 days
+  returns one group per issue and pages with `pageSize` (100 is accepted) and `nextPageToken`, so the
+  report reads every page rather than a top N. Real responses carry no `totalSize`. Its `interval` filter accepts anything from 90 days
   ago to now and defaults to the last 7 days.
 - **Users affected:** each group's metrics carry `eventsCount` and `impactedUsersCount`.
 - **New and regressed:** each issue carries `signals` set by Crashlytics (`SIGNAL_FRESH` for newly
   detected, `SIGNAL_REGRESSED` for closed issues seen again), plus `firstSeenTime`,
   `firstSeenVersion` and `state`. The report can also filter by signal.
-- **Crash free users:** the metrics carry `crashFreeUsersPercentage`.
+- **Crash free users:** the app-wide figure comes from the `appSummary` report filtered to fatal
+  errors (`filter.issue.errorTypes=FATAL`), one call per period. The `topIssues` percentages are per
+  issue, so they cannot give it. A group's metrics carry `totalUsersCount` and
+  `crashFreeUsersPercentage` only for periods the crash free SDKs cover, so older periods can come
+  back without them; the report shows those as none, "nothing to compare", and leaves them out of
+  the trend.
+- **Intervals:** whole UTC days, start inclusive and end exclusive (the end is the next midnight).
+  A start 90 days before today is accepted; 91 days gives HTTP 400. A range starting earlier shows
+  "not available for this range". A real response carried no `firstSeenTime` or `lastSeenTime`, and
+  `signals` is absent when an issue has none.
 - **From a script:** OAuth scope `cloud-platform` or `firebase`. A service account needs the
   Firebase Crashlytics Viewer role (`roles/firebasecrashlytics.viewer`), and the Firebase
   Crashlytics API must be enabled on the project. No console linking is needed.

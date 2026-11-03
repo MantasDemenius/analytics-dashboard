@@ -1,0 +1,29 @@
+{% set total = section.issues | length %}
+<section class="card wide issues">
+  <header><h3>Issues<span class="sub">{{ total }} issue{{ "" if total == 1 else "s" }}</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  {% if section.issues %}
+  <table class="issuelist">
+    <thead><tr><th>Issue</th><th class="n">Users</th><th class="n">Events</th><th>First seen in</th></tr></thead>
+    <tbody>
+    {% for issue in section.issues %}
+      <tr class="issue{{ " attention" if issue.needs_attention else "" }}">
+        <td>
+          {% if issue.link %}<a href="{{ issue.link }}" class="ititle">{{ issue.title }}</a>{% else %}<span class="ititle">{{ issue.title }}</span>{% endif %}
+          {% if issue.subtitle %}<span class="isub">{{ issue.subtitle }}</span>{% endif %}
+          <span class="tags">
+            {% for signal in issue.signals %}<span class="tag {{ signal.name | lower }}">{{ signal.value }}</span>{% endfor %}
+            <span class="tag">{{ issue.kind.value }}</span>
+            {% if issue.state.name != "OPEN" %}<span class="tag">{{ issue.state.value }}</span>{% endif %}
+          </span>
+        </td>
+        <td class="n">{{ issue.users | count }}</td>
+        <td class="n">{{ issue.events | count }}</td>
+        <td>{{ issue.first_seen_version or "–" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No issues in this range.</p>
+  {% endif %}
+</section>

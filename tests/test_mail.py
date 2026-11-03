@@ -4,6 +4,7 @@ from datetime import date, datetime
 from weekly_report.mail import message, subject
 from weekly_report.model import (
     AppReport,
+    Crashlytics,
     Growth,
     Listing,
     Metric,
@@ -42,6 +43,7 @@ REPORT = Report(
                 reviews=(),
             ),
             Vitals(Coverage(GROWTH_WEEK), Metric(0.42, 0.35), Metric(0.21, 0.24)),
+            Crashlytics(Coverage(GROWTH_WEEK), Metric(97.5, 96.0), ()),
         ),
     ),
     generated=datetime(2026, 11, 2, 8, 0),

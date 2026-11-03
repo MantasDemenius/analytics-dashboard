@@ -183,6 +183,59 @@ class Vitals:
     anr_rate: Metric
 
 
+class Signal(Enum):
+    """What Crashlytics' analyzer says about an issue; the order is the order a card shows them."""
+
+    FRESH = "New"
+    REGRESSED = "Regressed"
+    EARLY = "Early"
+    REPETITIVE = "Repetitive"
+
+
+class ErrorKind(Enum):
+    FATAL = "Crash"
+    NON_FATAL = "Non-fatal"
+    ANR = "ANR"
+
+
+class IssueState(Enum):
+    OPEN = "Open"
+    CLOSED = "Closed"
+    MUTED = "Muted"
+
+
+@dataclass(frozen=True)
+class Issue:
+    """One Crashlytics issue, its counts being those of the range."""
+
+    title: str
+    subtitle: str
+    kind: ErrorKind
+    state: IssueState
+    signals: tuple[Signal, ...]
+    users: int
+    events: int
+    first_seen_version: str | None
+    link: str | None
+
+    @property
+    def needs_attention(self) -> bool:
+        return Signal.FRESH in self.signals or Signal.REGRESSED in self.signals
+
+
+@dataclass(frozen=True)
+class Crashlytics:
+    """Crash free users over the range and every issue, new and regressed first.
+
+    `crash_free` is a percent of the range's users; 0 means Crashlytics counted none, and a
+    `previous` of 0 means the range before it lies past the 90 days Crashlytics keeps.
+    """
+
+    coverage: Coverage
+    crash_free: Metric
+    issues: tuple[Issue, ...]
+
+
 @dataclass(frozen=True)
 class AppReport:
     """One app's sections. Every field after `app` is a section or the Failure that replaced it."""
@@ -192,6 +245,7 @@ class AppReport:
     listing: Listing | Unavailable | Failure
     reviews: Reviews | Unavailable | Failure
     vitals: Vitals | Unavailable | Failure
+    crashlytics: Crashlytics | Unavailable | Failure
 
     def failures(self) -> list[Failure]:
         sections = (getattr(self, f.name) for f in fields(self) if f.name != "app")

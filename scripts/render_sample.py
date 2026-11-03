@@ -6,6 +6,9 @@ source and a range a source cannot reach. The reviews cover every label, a trans
 only the report holds, a reply, a run too late for part of the range and a week with no ratings.
 The vitals cover rates under Play's bad behaviour thresholds, a crash rate above its threshold,
 both rates above theirs with data ending inside the range, and a rate with no change.
+Crashlytics covers new, regressed, early, repetitive and plain issues of every kind and state,
+60 issues so the table runs over pages, a range with data ending inside it, a range at the 90
+day limit with no comparison, and a range with no issues.
 
 Run: uv run python scripts/render_sample.py
 """
@@ -17,25 +20,33 @@ from pathlib import Path
 from weekly_report import pdf
 from weekly_report.model import (
     AppReport,
+    Crashlytics,
+    ErrorKind,
     Failure,
     Growth,
+    Issue,
+    IssueState,
     Label,
     Listing,
     Metric,
+    Point,
     Report,
     Review,
     Reviews,
+    Signal,
     Unavailable,
     Vitals,
 )
 from weekly_report.periods import TREND_PERIODS, Coverage, Period
 from weekly_report.render import render, write
+from weekly_report.sources.crashlytics import sorted_issues
 
 OUT_DIR = Path("out/sample")
 REPORT_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
 BUCKET_WEEK = REPORT_WEEK.previous()
 LISTING_WEEK = BUCKET_WEEK.previous()
 VITALS_WEEK = BUCKET_WEEK
+CRASHLYTICS_WEEK = REPORT_WEEK
 
 
 def swinging(
@@ -197,6 +208,135 @@ EXAMPLE_REVIEWS = (
 )
 
 
+def crash_free_wave(now: float, period: Period) -> list[Point]:
+    """Made-up crash free percents that swing through the weeks before and end at `now`."""
+    weeks = period.trailing(TREND_PERIODS)
+    return [
+        Point(
+            week.start,
+            now if week == period else now - 0.8 + 1.2 * math.sin(index / 2.2) ** 2,
+        )
+        for index, week in enumerate(weeks)
+    ]
+
+
+def crashlytics_section(
+    now: float,
+    before: float,
+    issues: tuple[Issue, ...],
+    data_to: date | None = None,
+    trend: int = TREND_PERIODS,
+) -> Crashlytics:
+    coverage = Coverage(CRASHLYTICS_WEEK, data_to)
+    points = crash_free_wave(now, CRASHLYTICS_WEEK)[-trend:]
+    return Crashlytics(
+        coverage,
+        crash_free=Metric(now, before, trend=tuple(points)),
+        issues=issues,
+    )
+
+
+def issue(
+    title: str,
+    subtitle: str,
+    users: int,
+    events: int,
+    signals: tuple[Signal, ...] = (),
+    kind: ErrorKind = ErrorKind.FATAL,
+    state: IssueState = IssueState.OPEN,
+    version: str | None = "2.4.0",
+) -> Issue:
+    return Issue(
+        title,
+        subtitle,
+        kind,
+        state,
+        signals,
+        users,
+        events,
+        version,
+        f"https://console.example/issues/{title.replace(' ', '-')}",
+    )
+
+
+EXAMPLE_ISSUES = (
+    issue(
+        "MainActivity.onResume",
+        "java.lang.IllegalStateException: Fragment not attached",
+        41,
+        96,
+        (Signal.FRESH,),
+        version="2.5.0",
+    ),
+    issue(
+        "WidgetProvider.update",
+        "java.lang.NullPointerException: Attempt to invoke virtual method on a null object",
+        7,
+        12,
+        (Signal.REGRESSED, Signal.REPETITIVE),
+        version="2.1.0",
+    ),
+    issue("Database.query", "android.database.sqlite.SQLiteException", 120, 410),
+    issue(
+        "SyncWorker.doWork",
+        "java.net.SocketTimeoutException",
+        88,
+        1034,
+        (Signal.REPETITIVE,),
+        ErrorKind.NON_FATAL,
+    ),
+    issue(
+        "SettingsFragment.onCreate",
+        "java.lang.ClassCastException",
+        25,
+        31,
+        (Signal.EARLY,),
+    ),
+    issue(
+        "Input dispatching timed out",
+        "Waiting to send non-key event because the touched window has not finished",
+        14,
+        20,
+        kind=ErrorKind.ANR,
+    ),
+    issue(
+        "LegacyExporter.write",
+        "java.io.IOException: No space left on device",
+        3,
+        3,
+        kind=ErrorKind.NON_FATAL,
+        state=IssueState.CLOSED,
+        version=None,
+    ),
+    issue(
+        "ThemeLoader.apply",
+        "android.content.res.Resources$NotFoundException",
+        2,
+        2,
+        state=IssueState.MUTED,
+        version="2.0.1",
+    ),
+)
+MANY_ISSUES = sorted_issues(
+    [
+        issue(
+            f"com.example.feature{number}.Handler.run",
+            "java.lang.RuntimeException: unexpected state "
+            + "in the handler " * (number % 4),
+            max(1, 60 - number),
+            max(1, 140 - 2 * number),
+            (Signal.FRESH,)
+            if number == 3
+            else (Signal.REGRESSED,)
+            if number == 9
+            else (),
+            ErrorKind.NON_FATAL if number % 5 == 0 else ErrorKind.FATAL,
+        )
+        for number in range(60)
+    ]
+)
+
+
 def flat_week() -> dict[date, float]:
     daily = swinging(BUCKET_WEEK, base=30, slope=0.05, this_week=34)
     previous = BUCKET_WEEK.previous().days()
@@ -230,6 +370,7 @@ def sample() -> Report:
                     {5: 14, 4: 9, 3: 5, 2: 2, 1: 3},
                 ),
                 vitals_section(crash=(0.42, 0.35), anr=(0.21, 0.24)),
+                crashlytics_section(98.2, 97.4, EXAMPLE_ISSUES),
             ),
             AppReport(
                 "Second App",
@@ -249,6 +390,9 @@ def sample() -> Report:
                 vitals_section(
                     crash=(1.31, 0.98), anr=(0.52, 0.44), data_to=date(2026, 10, 22)
                 ),
+                crashlytics_section(
+                    94.1, 96.3, MANY_ISSUES, data_to=date(2026, 10, 30)
+                ),
             ),
             AppReport(
                 "Third App",
@@ -256,6 +400,7 @@ def sample() -> Report:
                 listing(listing_visitors(380), rate=0.2),
                 reviews_section({}, 0),
                 vitals_section(crash=(1.09, 1.4), anr=(0.3, 0.3)),
+                crashlytics_section(99.1, 0, (), trend=1),
             ),
             AppReport(
                 "Fourth App",
@@ -263,6 +408,7 @@ def sample() -> Report:
                 Failure("Play report bucket", "403 Forbidden"),
                 Failure("Play reviews", "403 Forbidden"),
                 Failure("Play vitals", "403 Forbidden"),
+                Failure("Crashlytics", "403 Forbidden"),
             ),
             AppReport(
                 "Fifth App",
@@ -270,6 +416,7 @@ def sample() -> Report:
                 Unavailable("Play report bucket", LISTING_WEEK),
                 Unavailable("Play reviews", REPORT_WEEK),
                 Unavailable("Play vitals", VITALS_WEEK),
+                Unavailable("Crashlytics", CRASHLYTICS_WEEK),
             ),
         ),
     )

@@ -95,6 +95,23 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 .original { font-size: 12px; color: var(--muted); }
 .reply { font-size: 12.5px; border-left: 3px solid var(--line); padding-left: 10px; color: var(--ink2); }
 
+.card.issues { break-inside: auto; }
+.issuelist { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.issuelist thead { display: table-header-group; }
+.issuelist th { text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; padding: 0 10px 8px 0; border-bottom: 1px solid var(--line); }
+.issuelist td { padding: 10px 10px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.issuelist tr { break-inside: avoid; }
+.issuelist tbody tr:last-child td { border-bottom: 0; }
+.issuelist .n { text-align: right; white-space: nowrap; }
+.issuelist td:last-child { white-space: nowrap; }
+.issuelist th:last-child, .issuelist td:last-child { padding-left: 18px; }
+.issue.attention td:first-child { padding-left: 10px; box-shadow: inset 3px 0 0 var(--bad); }
+.ititle { font-weight: 650; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+.isub { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag.fresh { background: #fdf0d8; color: #8a5a00; }
+.tag.regressed { background: #fdecea; color: var(--bad); }
+
 .vitals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .vital { break-inside: avoid; }
 .vital .vhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }

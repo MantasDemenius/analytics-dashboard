@@ -30,8 +30,9 @@ from weekly_report.periods import TREND_PERIODS
 
 MINUS = "−"
 NOT_AVAILABLE = "not available for this range"
-NO_RATINGS = "none"
+NONE = "none"
 NO_COMPARISON = "no ratings to compare"
+NOTHING_TO_COMPARE = "nothing to compare"
 BLUE = "#2a78d6"
 ORANGE = "#d9622b"
 TEAL = "#1a8f72"
@@ -100,19 +101,29 @@ def rate_change(metric: Metric) -> str:
     return signed(metric.change, 2, " pts")
 
 
+def crash_free(number: float) -> str:
+    return rate(number) if number else NONE
+
+
+def crash_free_change(metric: Metric) -> str:
+    if not has_both(metric):
+        return NOTHING_TO_COMPARE
+    return rate_change(metric)
+
+
 def rating(number: float) -> str:
-    return f"{number:.2f}" if number else NO_RATINGS
+    return f"{number:.2f}" if number else NONE
 
 
 def stars_change(metric: Metric) -> str:
-    if not has_ratings(metric):
+    if not has_both(metric):
         return NO_COMPARISON
     if metric.change == 0:
         return "no change"
     return signed(metric.change, 2, " stars")
 
 
-def has_ratings(metric: Metric) -> bool:
+def has_both(metric: Metric) -> bool:
     return metric.value > 0 and metric.previous > 0
 
 
@@ -246,7 +257,7 @@ STORE_RATING = Headline(
     GOLD,
     shown=rating,
     change=stars_change,
-    comparable=has_ratings,
+    comparable=has_both,
     note=lambda reviews: (
         f"28 day average rating, as of {short_day(reviews.coverage.covered.end)}"
     ),
@@ -259,7 +270,7 @@ NEW_RATINGS_AVERAGE = Headline(
     GOLD,
     shown=rating,
     change=stars_change,
-    comparable=has_ratings,
+    comparable=has_both,
 )
 NEW_RATINGS = Headline(
     "New ratings", "reviews", lambda reviews: reviews.new_ratings, Better.UP, GOLD
@@ -285,6 +296,17 @@ ANR_RATE = Headline(
     shown=rate,
     change=rate_change,
 )
+CRASH_FREE_USERS = Headline(
+    "Crash free users",
+    "crashlytics",
+    lambda crashlytics: crashlytics.crash_free,
+    Better.UP,
+    TEAL,
+    shown=crash_free,
+    change=crash_free_change,
+    comparable=has_both,
+    note=lambda crashlytics: "Users without fatal crashes, UTC days",
+)
 CARDS = (
     NEW_INSTALLS,
     UNINSTALLS,
@@ -292,13 +314,15 @@ CARDS = (
     LISTING_CONVERSION,
     STORE_RATING,
     PLAY_CRASH_RATE,
+    CRASH_FREE_USERS,
 )
-GLANCE = (NET_GROWTH, STORE_RATING, PLAY_CRASH_RATE)
+GLANCE = (NET_GROWTH, STORE_RATING, PLAY_CRASH_RATE, CRASH_FREE_USERS)
 RATINGS_FIGURES = (NEW_RATINGS_AVERAGE, NEW_RATINGS)
 SECTIONS = (
     Section("growth", "Play: growth", "growth.html.j2"),
     Section("reviews", "Play: ratings and reviews", "reviews.html.j2"),
     Section("vitals", "Play: vitals", "vitals.html.j2"),
+    Section("crashlytics", "Crashlytics: issues", "crashlytics.html.j2"),
 )
 VITAL_BARS = (
     ("Crash rate", PLAY_CRASH_RATE, CRASH_THRESHOLD),

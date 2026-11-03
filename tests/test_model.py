@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 
 from weekly_report.model import (
     AppReport,
+    Crashlytics,
     Failure,
     Growth,
     Label,
@@ -213,7 +214,15 @@ class RatioTest(unittest.TestCase):
 
 
 class ReportProblemsTest(unittest.TestCase):
-    def app(self, name="first", growth=None, listing=None, reviews=None, vitals=None):
+    def app(
+        self,
+        name="first",
+        growth=None,
+        listing=None,
+        reviews=None,
+        vitals=None,
+        crashlytics=None,
+    ):
         metric = Metric(value=1, previous=1)
         return AppReport(
             name,
@@ -221,6 +230,7 @@ class ReportProblemsTest(unittest.TestCase):
             listing or Listing(Coverage(WEEK), metric, metric, metric),
             reviews or Reviews(Coverage(WEEK), metric, metric, metric, {}, ()),
             vitals or Vitals(Coverage(WEEK), metric, metric),
+            crashlytics or Crashlytics(Coverage(WEEK), metric, ()),
         )
 
     def test_no_failures_means_no_problems(self):
@@ -250,6 +260,11 @@ class ReportProblemsTest(unittest.TestCase):
         report = Report(period=WEEK, apps=(self.app(vitals=failure),))
         self.assertEqual(report.problems, [("first", failure)])
 
+    def test_a_failing_crashlytics_section_is_a_problem(self):
+        failure = Failure(source="Crashlytics", error="403 Forbidden")
+        report = Report(period=WEEK, apps=(self.app(crashlytics=failure),))
+        self.assertEqual(report.problems, [("first", failure)])
+
     def test_a_section_the_range_does_not_reach_is_not_a_problem(self):
         unavailable = Unavailable("Play report bucket", WEEK)
         report = Report(
@@ -260,6 +275,7 @@ class ReportProblemsTest(unittest.TestCase):
                     listing=unavailable,
                     reviews=unavailable,
                     vitals=unavailable,
+                    crashlytics=unavailable,
                 ),
             ),
         )
