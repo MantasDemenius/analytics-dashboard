@@ -581,6 +581,16 @@ class GlanceTest(unittest.TestCase):
             '<span class="d worse"><span class="arr">▲</span>+17 (+32.7%)', row
         )
 
+    def test_every_cell_shows_its_own_range_in_the_page(self):
+        coverage = Coverage(BUCKET_WEEK, date(2026, 10, 22))
+        glance = self.glance(app("first", growth(coverage=coverage)))
+        row = part(glance, "<tbody>", "</tbody>")
+        self.assertEqual(
+            re.findall(r'<span class="rng">(.*?)</span>', row),
+            ["19 Oct to 25 Oct 2026, data to 22 Oct"] * 2,
+        )
+        self.assertNotIn("title=", row)
+
     def test_a_failed_and_an_unreachable_section_say_so_in_their_cells(self):
         glance = self.glance(
             app("first", Failure("Play report bucket", "403 Forbidden")),
@@ -628,6 +638,27 @@ class NumberCardTest(unittest.TestCase):
         )
         self.assertIn(
             '<span class="d neutral"><span class="arr">■</span>no change', flat
+        )
+
+    def test_a_card_shows_its_range_in_the_page_and_not_only_on_hover(self):
+        [card] = cards(render(report(app("first", growth()))))
+        self.assertIn('<span class="rng">19 Oct to 25 Oct 2026</span>', card)
+        self.assertNotIn("title=", card)
+
+    def test_a_card_over_an_older_week_shows_that_week(self):
+        html = render(
+            report(app("first", listing_section=listing())),
+            cards=(NEW_INSTALLS, LISTING_CONVERSION),
+        )
+        installs, conversion = cards(html)
+        self.assertIn('<span class="rng">19 Oct to 25 Oct 2026</span>', installs)
+        self.assertIn('<span class="rng">12 Oct to 18 Oct 2026</span>', conversion)
+
+    def test_a_card_with_data_ending_inside_its_range_says_where(self):
+        coverage = Coverage(BUCKET_WEEK, date(2026, 10, 22))
+        [card] = cards(render(report(app("first", growth(coverage=coverage)))))
+        self.assertIn(
+            '<span class="rng">19 Oct to 25 Oct 2026, data to 22 Oct</span>', card
         )
 
     def test_a_card_draws_its_12_period_sparkline(self):

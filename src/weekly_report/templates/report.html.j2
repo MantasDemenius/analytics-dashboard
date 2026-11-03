@@ -28,6 +28,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 .d.better { color: var(--good); }
 .d.worse { color: var(--bad); }
 .d.neutral { color: var(--flat); }
+.rng { display: block; font-size: 10.5px; line-height: 1.35; color: var(--muted); margin-top: 2px; }
 
 .problems { background: #fdecea; border: 1px solid #f1b8b2; border-radius: 14px; padding: 14px 18px; margin-bottom: 20px; break-inside: avoid; }
 .problems h2 { color: var(--bad); margin-bottom: 6px; }
@@ -202,7 +203,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
         {% if shown is missing %}
         <td class="missing{{ " failed" if shown.failed }}">{{ shown.reason }}</td>
         {%- else %}
-        <td title="{{ shown.range }}"><span class="v">{{ shown.value }}</span>{{ m.change(shown) }}</td>
+        <td><span class="v">{{ shown.value }}</span>{{ m.change(shown) }}<span class="rng">{{ shown.range }}</span></td>
         {%- endif %}
       {% endfor %}
       </tr>
@@ -227,10 +228,11 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
       {% if shown.range %}<span class="why">{{ shown.range }}</span>{% endif %}
     </div>
     {% else %}
-    <div class="kpi" title="{{ shown.range }}"><span class="l">{{ shown.label }}</span>
+    <div class="kpi"><span class="l">{{ shown.label }}</span>
       {% if shown.note %}<span class="what">{{ shown.note }}</span>{% endif %}
       <span class="v">{{ shown.value }}</span>
       <span>{{ m.change(shown) }}<span class="was">{{ shown.was }}</span></span>
+      <span class="rng">{{ shown.range }}</span>
       {% if shown.trend %}
       {{ m.chart(sparkline(shown.trend, shown.colour), shown.label ~ ", " ~ trend_periods ~ " " ~ shown.periods, 3.6) }}
       <span class="cap"><span>{{ shown.trend[0].day | short_day }}</span><span>{{ trend_periods }} {{ shown.periods }}</span><span>{{ shown.trend[-1].day | short_day }}</span></span>
