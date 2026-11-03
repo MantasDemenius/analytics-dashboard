@@ -524,9 +524,10 @@ src/weekly_report/
   feedback included, in the emailed PDF.
 - A remote run costs a few thousand Claude tokens; the weekly run stays on Task Scheduler with
   none.
-- It is the last phase 1 ticket, after email works. Its acceptance includes one real run from the
-  phone in a session for another project, which settles what Claude Code's docs leave open
-  (whether a skill can be invoked over Remote Control).
+- **A skill can be invoked over Remote Control** (settled 2026-11-03): the author typed
+  `/run-report` on the phone into a desktop app session on the PC, it ran the command with no
+  permission prompt, and the PDF arrived. That session was in this repo; the skill is global and
+  passes `--directory`, so the session's project does not change what runs.
 
 ## Outside this project
 
