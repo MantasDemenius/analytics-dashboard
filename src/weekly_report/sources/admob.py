@@ -28,14 +28,14 @@ METRICS = ["ESTIMATED_EARNINGS", "IMPRESSIONS"]
 type ReportReader = Callable[[dict], list[dict]]
 
 
-def stamp(day: date) -> dict:
+def api_date(day: date) -> dict:
     return {"year": day.year, "month": day.month, "day": day.day}
 
 
 def spec(dimensions: list[str], first: date, last: date) -> dict:
     return {
         "reportSpec": {
-            "dateRange": {"startDate": stamp(first), "endDate": stamp(last)},
+            "dateRange": {"startDate": api_date(first), "endDate": api_date(last)},
             "dimensions": dimensions,
             "metrics": METRICS,
         }
@@ -72,15 +72,15 @@ def rows(messages: list[dict]) -> list[dict]:
     return [message["row"] for message in messages if "row" in message]
 
 
-def micros(row: dict, metric: str) -> float:
+def money_metric(row: dict, metric: str) -> float:
     return int(row["metricValues"][metric]["microsValue"]) / MICROS
 
 
-def count(row: dict, metric: str) -> int:
+def integer_metric(row: dict, metric: str) -> int:
     return int(row["metricValues"][metric]["integerValue"])
 
 
-def pacific_day(text: str) -> date:
+def report_date(text: str) -> date:
     return date(int(text[:4]), int(text[4:6]), int(text[6:]))
 
 
@@ -100,10 +100,10 @@ def daily_units(messages: list[dict]) -> dict[str, Daily]:
         dimensions = row["dimensionValues"]
         unit = dimensions["AD_UNIT"]
         daily = units.setdefault(unit["value"], Daily(unit["displayLabel"]))
-        day = pacific_day(dimensions["DATE"]["value"])
+        day = report_date(dimensions["DATE"]["value"])
         daily.formats.add(dimensions["FORMAT"]["value"])
-        daily.earnings[day] += micros(row, "ESTIMATED_EARNINGS")
-        daily.impressions[day] += count(row, "IMPRESSIONS")
+        daily.earnings[day] += money_metric(row, "ESTIMATED_EARNINGS")
+        daily.impressions[day] += integer_metric(row, "IMPRESSIONS")
     return units
 
 
@@ -122,7 +122,7 @@ def monthly_earnings(messages: list[dict]) -> tuple[Point, ...]:
         points.append(
             Point(
                 date(int(month[:4]), int(month[4:]), 1),
-                micros(row, "ESTIMATED_EARNINGS"),
+                money_metric(row, "ESTIMATED_EARNINGS"),
             )
         )
     return tuple(sorted(points, key=lambda point: point.day))

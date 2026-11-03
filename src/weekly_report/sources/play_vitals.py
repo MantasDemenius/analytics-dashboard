@@ -31,7 +31,7 @@ type SetReader = Callable[[str], dict]
 type RowReader = Callable[[str, dict], list[dict]]
 
 
-def pacific_day(day: date) -> dict:
+def zoned_day(day: date) -> dict:
     return {
         "year": day.year,
         "month": day.month,
@@ -56,8 +56,8 @@ def query_body(rate: str, first: date, last: date) -> dict:
         "metrics": [rate + WEIGHTED, rate],
         "timelineSpec": {
             "aggregationPeriod": "DAILY",
-            "startTime": pacific_day(first),
-            "endTime": pacific_day(last + timedelta(days=1)),
+            "startTime": zoned_day(first),
+            "endTime": zoned_day(last + timedelta(days=1)),
         },
     }
 

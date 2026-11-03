@@ -106,7 +106,7 @@ def split_title(text: str) -> tuple[str, str]:
     return (title, body) if tab else ("", text)
 
 
-def stamp(timestamp: dict) -> datetime:
+def moment_of(timestamp: dict) -> datetime:
     return datetime.fromtimestamp(
         int(timestamp["seconds"]) + timestamp.get("nanos", 0) / 1e9, UTC
     )
@@ -129,7 +129,7 @@ def api_review(raw: dict) -> ApiReview:
         original_text="\n".join(filter(None, split_title(original)))
         if original
         else None,
-        modified=stamp(user["lastModified"]),
+        modified=moment_of(user["lastModified"]),
         reply=developer["text"] if developer else None,
     )
 
