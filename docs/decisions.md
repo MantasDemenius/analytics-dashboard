@@ -182,8 +182,15 @@ Built in `sources/play_reviews.py` (2026-11-03):
   edited". Only a review the API does not return shows its CSV language tag.
 - **Too late:** the API is trusted for days after today minus 7, the CSV for older days. A day
   older than that whose month has no CSV file is listed in the section's "may be missing" notice;
-  a range with no such day covered at all is "not available for this range". The API is not asked
-  when the range ended before its window.
+  a range with no such day covered at all, however many months that spans, is "not available for
+  this range". The API is not asked when the range ended before its window.
+- **Lagging reviews CSV:** its star-only ratings come from no other source, so the section shows
+  "data to <date>" like the bucket sections do. The CSV is trusted for days older than the API's
+  window; for newer days it reaches the newest submit or last update day any of its rows names,
+  and the comparison is cut to the same days. A small app with no rating for days therefore
+  shows an earlier "data to" than the CSV really has, since a quiet day and a late file look the
+  same; that errs towards saying less. A range starting after that day is "not available for
+  this range".
 
 ## Play vitals source
 

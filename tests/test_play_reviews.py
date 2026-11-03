@@ -159,11 +159,10 @@ class NewRatingsTest(unittest.TestCase):
     def test_compares_with_the_range_before(self):
         files = october(
             csv_row("2026-10-27", 5),
-            csv_row("2026-10-28", 5),
             csv_row("2026-10-20", 2),
             csv_row("2026-10-21", 3),
             csv_row("2026-10-22", 4),
-        )
+        ) | november(csv_row("2026-11-01", 5))
         section = run(files)
         self.assertEqual(
             (section.new_ratings.value, section.new_ratings.previous), (2, 3)
@@ -486,12 +485,67 @@ class TooLateTest(unittest.TestCase):
         old = Period(date(2026, 9, 1), date(2026, 9, 7))
         self.assertEqual(run({}, period=old), Unavailable(play_reviews.SOURCE, old))
 
+    def test_a_range_spanning_months_with_no_file_at_all_is_unavailable(self):
+        old = Period(date(2026, 9, 28), date(2026, 10, 4))
+        self.assertEqual(run({}, period=old), Unavailable(play_reviews.SOURCE, old))
+
+    def test_a_range_with_one_month_covered_is_available(self):
+        old = Period(date(2026, 9, 28), date(2026, 10, 4))
+        files = october(csv_row("2026-10-02", 5))
+        section = run(files, period=old)
+        self.assertEqual(
+            section.uncovered, (Period(date(2026, 9, 28), date(2026, 9, 30)),)
+        )
+
     def test_a_range_the_report_file_holds_is_available_even_with_no_reviews(self):
         old = Period(date(2026, 9, 1), date(2026, 9, 7))
         files = {reviews_path(PACKAGE, date(2026, 9, 1)): reviews_csv()}
         section = run(files, period=old)
         self.assertEqual(section.uncovered, ())
         self.assertEqual(section.new_ratings.value, 0)
+
+
+class ReportLagTest(unittest.TestCase):
+    def test_a_report_that_stops_inside_the_range_says_where_its_data_ends(self):
+        section = run(october(csv_row("2026-10-29", 5)))
+        self.assertEqual(section.coverage.data_to, date(2026, 10, 29))
+
+    def test_a_report_through_the_whole_range_has_no_data_to(self):
+        section = run(
+            october(csv_row("2026-10-29", 5)) | november(csv_row("2026-11-01", 4))
+        )
+        self.assertIsNone(section.coverage.data_to)
+
+    def test_the_newest_day_counts_a_late_edit(self):
+        files = october(csv_row("2026-10-20", 5, text="Fine", updated="2026-10-30"))
+        self.assertEqual(run(files).coverage.data_to, date(2026, 10, 30))
+
+    def test_the_previous_range_is_cut_to_the_days_the_report_covers(self):
+        files = october(
+            csv_row("2026-10-19", 5),
+            csv_row("2026-10-22", 3),
+            csv_row("2026-10-23", 1),
+            csv_row("2026-10-29", 4),
+        )
+        section = run(files)
+        self.assertEqual(
+            (section.new_ratings.value, section.new_ratings.previous), (1, 2)
+        )
+
+    def test_days_older_than_the_apis_window_are_trusted_to_be_complete(self):
+        old = Period(date(2026, 10, 5), date(2026, 10, 11))
+        section = run(october(csv_row("2026-10-08", 5)), period=old)
+        self.assertIsNone(section.coverage.data_to)
+
+    def test_a_range_starting_after_the_report_ends_is_unavailable(self):
+        late = Period(date(2026, 11, 2), date(2026, 11, 3))
+        self.assertEqual(
+            run(october(csv_row("2026-10-29", 5)), period=late),
+            Unavailable(play_reviews.SOURCE, late),
+        )
+
+    def test_a_report_with_no_rows_claims_no_lag(self):
+        self.assertIsNone(run(october()).coverage.data_to)
 
 
 class AllPagesTest(unittest.TestCase):

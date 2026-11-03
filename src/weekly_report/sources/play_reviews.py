@@ -184,6 +184,20 @@ def uncovered_days(
     return tuple(missing)
 
 
+def reaching_report(
+    period: Period, today: date, from_csv: list[CsvReview]
+) -> Coverage | None:
+    """How far the reviews report is known to reach into `period`.
+
+    The report is trusted for days older than the API's window; for newer days it reaches the
+    newest day any of its rows names. None when it does not reach the period at all.
+    """
+    if not from_csv:
+        return Coverage(period)
+    newest = max(max(each.submitted.date(), each.updated.date()) for each in from_csv)
+    return Coverage.reaching(period, max(newest, today - timedelta(days=API_DAYS)))
+
+
 def merged_cards(
     from_csv: list[CsvReview], from_api: list[ApiReview], period: Period
 ) -> tuple[Review, ...]:
@@ -259,12 +273,14 @@ def reviews(
     from_csv, absent = read_csv_reviews(
         read, package, Period(trend_start - window, period.end)
     )
+    uncovered = uncovered_days(period, today, absent)
+    coverage = None
+    if sum(gap.length for gap in uncovered) < period.length:
+        coverage = reaching_report(period, today, from_csv)
+    if coverage is None:
+        return Unavailable(SOURCE, period)
     api_reaches = period.end >= today - timedelta(days=API_DAYS)
     from_api = [api_review(raw) for raw in list_reviews()] if api_reaches else []
-    uncovered = uncovered_days(period, today, absent)
-    if uncovered == (period,):
-        return Unavailable(SOURCE, period)
-    coverage = Coverage(period)
 
     def daily(value: Callable[[CsvReview], float]) -> dict[date, float]:
         totals: dict[date, float] = {}
