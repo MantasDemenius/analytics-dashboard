@@ -5,7 +5,7 @@ from pathlib import Path
 
 from jinja2 import Environment, PackageLoader, StrictUndefined, select_autoescape
 
-from weekly_report.model import Failure, Metric, Point, Report
+from weekly_report.model import Failure, Metric, Point, Report, Unavailable
 
 MINUS = "−"
 INSTALLS_COLOUR = "#2a6fdb"
@@ -22,6 +22,17 @@ def signed(number: float, digits: int = 0, unit: str = "") -> str:
 
 def count(number: float) -> str:
     return f"{number:,.0f}"
+
+
+def before(days: int) -> str:
+    if days == 7:
+        return "the week before"
+    if days == 1:
+        return "the day before"
+    return f"the {days} days before"
+
+
+NOT_AVAILABLE = "not available for this range"
 
 
 def day_label(point: Point) -> str:
@@ -69,8 +80,11 @@ def render(report: Report) -> str:
     environment.filters |= {
         "signed": signed,
         "count": count,
+        "before": before,
     }
     environment.tests["failure"] = lambda section: isinstance(section, Failure)
+    environment.tests["unavailable"] = lambda section: isinstance(section, Unavailable)
+    environment.globals["not_available"] = NOT_AVAILABLE
     template = environment.get_template("report.html.j2")
     return template.render(
         report=report,
@@ -103,10 +117,12 @@ def summary(report: Report) -> list[str]:
         growth = app.growth
         if isinstance(growth, Failure):
             lines.append(f"  {growth.source} failed, see Problems")
+        elif isinstance(growth, Unavailable):
+            lines.append(f"  {growth.source}: {NOT_AVAILABLE}")
         else:
             installs = growth.installs
             lines.append(
-                f"  New installs, {growth.period.label()}: "
+                f"  New installs, {growth.coverage.label()}: "
                 f"{count(installs.value)} ({change_text(installs)})"
             )
     return lines

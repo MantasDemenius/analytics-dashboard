@@ -3,8 +3,16 @@ import re
 import unittest
 from datetime import date, datetime
 
-from weekly_report.model import AppReport, Failure, Growth, Metric, Point, Report
-from weekly_report.periods import Period
+from weekly_report.model import (
+    AppReport,
+    Failure,
+    Growth,
+    Metric,
+    Point,
+    Report,
+    Unavailable,
+)
+from weekly_report.periods import Coverage, Period
 from weekly_report.render import render, summary
 
 REPORT_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
@@ -12,10 +20,11 @@ BUCKET_WEEK = Period(date(2026, 10, 19), date(2026, 10, 25))
 GENERATED = datetime(2026, 11, 2, 8, 0)
 
 
-def growth(value=69, previous=52):
-    series = tuple(Point(day, 10) for day in BUCKET_WEEK.days())
+def growth(value=69, previous=52, coverage=None):
+    coverage = coverage or Coverage(BUCKET_WEEK)
+    series = tuple(Point(day, 10) for day in coverage.covered.days())
     return Growth(
-        period=BUCKET_WEEK,
+        coverage=coverage,
         installs=Metric(value=value, previous=previous, series=series),
     )
 
@@ -41,6 +50,33 @@ class RenderTest(unittest.TestCase):
         self.assertIn("+17", html)
         self.assertIn("+32.7%", html)
         self.assertIn("52 the week before", html)
+
+    def test_a_partly_covered_section_says_where_its_data_ends(self):
+        coverage = Coverage(BUCKET_WEEK, date(2026, 10, 22))
+        html = render(report(AppReport("first", growth(coverage=coverage))))
+        self.assertIn("19 Oct to 25 Oct 2026, data to 22 Oct", html)
+        self.assertIn("52 the 4 days before", html)
+        [(_, config)] = chart_configs(html)
+        self.assertEqual(len(config["data"]["datasets"][0]["data"]), 4)
+
+    def test_a_range_that_is_not_a_week_names_its_length(self):
+        coverage = Coverage(Period(date(2026, 10, 1), date(2026, 10, 10)))
+        html = render(report(AppReport("first", growth(coverage=coverage))))
+        self.assertIn("52 the 10 days before", html)
+
+    def test_a_single_day_range(self):
+        coverage = Coverage(Period(date(2026, 10, 1), date(2026, 10, 1)))
+        html = render(report(AppReport("first", growth(coverage=coverage))))
+        self.assertIn("52 the day before", html)
+
+    def test_an_unreachable_range_says_so_in_its_section_and_is_no_problem(self):
+        html = render(
+            report(AppReport("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+        )
+        self.assertIn("not available for this range", html)
+        self.assertIn("19 Oct to 25 Oct 2026", html)
+        self.assertNotIn('class="problems"', html)
+        self.assertEqual(chart_configs(html), [])
 
     def test_a_fall_shows_a_minus(self):
         html = render(report(AppReport("first", growth(value=40, previous=50))))
@@ -115,6 +151,23 @@ class SummaryTest(unittest.TestCase):
     def test_a_rise_from_zero_shows_no_percent(self):
         lines = summary(report(AppReport("first", growth(value=4, previous=0))))
         self.assertEqual(lines[-1], "  New installs, 19 Oct to 25 Oct 2026: 4 (+4)")
+
+    def test_a_partly_covered_section_says_where_its_data_ends(self):
+        coverage = Coverage(BUCKET_WEEK, date(2026, 10, 22))
+        lines = summary(report(AppReport("first", growth(coverage=coverage))))
+        self.assertEqual(
+            lines[-1],
+            "  New installs, 19 Oct to 25 Oct 2026, data to 22 Oct: 69 (+17, +32.7%)",
+        )
+
+    def test_an_unreachable_range_says_so(self):
+        lines = summary(
+            report(AppReport("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+        )
+        self.assertEqual(
+            lines[-1], "  Play report bucket: not available for this range"
+        )
+        self.assertNotIn("Problems:", lines)
 
     def test_failures_show_in_their_section_and_as_problems(self):
         failure = Failure(source="Play report bucket", error="403 Forbidden")

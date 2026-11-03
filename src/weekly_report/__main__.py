@@ -15,7 +15,7 @@ from pathlib import Path
 from weekly_report import mail, pdf
 from weekly_report.config import AppConfig, ConfigError, load_apps, load_report
 from weekly_report.model import AppReport, Failure, Report
-from weekly_report.periods import week_ending_by
+from weekly_report.periods import Period, week_ending_by
 from weekly_report.render import render, summary, write
 from weekly_report.sources import play_bucket
 
@@ -26,15 +26,47 @@ LOG_FILE = Path("logs/weekly-report.log")
 log = logging.getLogger("weekly_report")
 
 
+def iso_date(text: str) -> date:
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected YYYY-MM-DD, got '{text}'") from None
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="weekly-report", description=__doc__)
+    parser.add_argument(
+        "--from",
+        dest="from_date",
+        type=iso_date,
+        metavar="YYYY-MM-DD",
+        help="first day of the range, inclusive; needs --to",
+    )
+    parser.add_argument(
+        "--to",
+        dest="to_date",
+        type=iso_date,
+        metavar="YYYY-MM-DD",
+        help="last day of the range, inclusive; needs --from",
+    )
     parser.add_argument(
         "--email", action="store_true", help="print the PDF and email it"
     )
     parser.add_argument(
         "--no-open", action="store_true", help="do not open the report in a browser"
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (args.from_date is None) != (args.to_date is None):
+        parser.error("--from and --to go together")
+    if args.from_date and args.to_date < args.from_date:
+        parser.error(f"--to {args.to_date} is before --from {args.from_date}")
+    return args
+
+
+def requested_range(args: argparse.Namespace) -> Period | None:
+    if args.from_date is None:
+        return None
+    return Period(args.from_date, args.to_date)
 
 
 def attempt[T](source: str, build: Callable[[], T]) -> T | Failure:
@@ -46,22 +78,25 @@ def attempt[T](source: str, build: Callable[[], T]) -> T | Failure:
         return Failure(source, str(error) or type(error).__name__)
 
 
-def app_report(app: AppConfig, today: date) -> AppReport:
+def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
     return AppReport(
         app=app.name,
         growth=attempt(
             play_bucket.SOURCE,
             lambda: play_bucket.installs_growth(
-                play_bucket.bucket_reader(app), app.package, today
+                play_bucket.bucket_reader(app), app.package, today, period
             ),
         ),
     )
 
 
-def build_report(apps: list[AppConfig], today: date) -> Report:
+def build_report(
+    apps: list[AppConfig], today: date, requested: Period | None = None
+) -> Report:
+    """With no `requested` range every source picks its own newest complete week."""
     return Report(
-        period=week_ending_by(today - timedelta(days=1)),
-        apps=tuple(app_report(app, today) for app in apps),
+        period=requested or week_ending_by(today - timedelta(days=1)),
+        apps=tuple(app_report(app, today, requested) for app in apps),
     )
 
 
@@ -98,7 +133,7 @@ def main(argv: list[str] | None = None) -> None:
     except ConfigError as error:
         sys.exit(str(error))
 
-    report = build_report(apps, date.today())
+    report = build_report(apps, date.today(), requested_range(args))
     PDF_PATH.unlink(missing_ok=True)
     html = write(render(report), OUT_DIR)
     print("\n".join(summary(report)))

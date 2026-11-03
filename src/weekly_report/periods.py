@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 SUNDAY = 6
+TREND_PERIODS = 12
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,17 @@ class Period:
         end = self.start - timedelta(days=1)
         return Period(end - timedelta(days=self.length - 1), end)
 
+    def cut(self, days: int) -> Period:
+        """The first `days` days of this period."""
+        return Period(self.start, self.start + timedelta(days=days - 1))
+
+    def trailing(self, count: int) -> list[Period]:
+        """`count` periods of this length ending with this one, oldest first."""
+        periods = [self]
+        for _ in range(count - 1):
+            periods.append(periods[-1].previous())
+        return periods[::-1]
+
     def months(self) -> list[date]:
         """The first day of every calendar month the period touches, in order."""
         months = []
@@ -41,6 +53,32 @@ class Period:
         if self.start.year == self.end.year:
             return f"{self.start.day} {self.start:%b} to {end}"
         return f"{self.start.day} {self.start:%b %Y} to {end}"
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """A requested period and, when a source's data stops inside it, the last day it has."""
+
+    period: Period
+    data_to: date | None = None
+
+    @classmethod
+    def reaching(cls, period: Period, data_to: date | None) -> Coverage | None:
+        """None when the data does not reach the period at all."""
+        if data_to is None or data_to < period.start:
+            return None
+        if data_to >= period.end:
+            return cls(period)
+        return cls(period, data_to)
+
+    @property
+    def covered(self) -> Period:
+        return Period(self.period.start, self.data_to or self.period.end)
+
+    def label(self) -> str:
+        if self.data_to is None:
+            return self.period.label()
+        return f"{self.period.label()}, data to {self.data_to.day} {self.data_to:%b}"
 
 
 def week_ending_by(last_day: date) -> Period:

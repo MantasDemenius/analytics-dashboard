@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from weekly_report.mail import message, subject
 from weekly_report.model import AppReport, Growth, Metric, Report
-from weekly_report.periods import Period
+from weekly_report.periods import Coverage, Period
 
 WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
 REPORT = Report(
@@ -11,7 +11,9 @@ REPORT = Report(
     apps=(
         AppReport(
             "first",
-            Growth(Period(date(2026, 10, 19), date(2026, 10, 25)), Metric(69, 52)),
+            Growth(
+                Coverage(Period(date(2026, 10, 19), date(2026, 10, 25))), Metric(69, 52)
+            ),
         ),
     ),
     generated=datetime(2026, 11, 2, 8, 0),

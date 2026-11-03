@@ -35,6 +35,7 @@ h3 .range { font-weight: normal; color: #6b6a65; }
 .change.flat { color: #6b6a65; }
 .was { color: #6b6a65; font-size: 12px; }
 .error { color: #b3261e; margin: 0; }
+.muted { color: #6b6a65; margin: 0; }
 .chart { position: relative; break-inside: avoid; }
 .chart canvas { display: block; }
 @page { size: A4; margin: 12mm; }
@@ -67,16 +68,19 @@ h3 .range { font-weight: normal; color: #6b6a65; }
   {% if growth is failure %}
     <h3>Play: growth</h3>
     <p class="error">{{ growth.source }}: {{ growth.error }}</p>
+  {% elif growth is unavailable %}
+    <h3>Play: growth <span class="range">{{ growth.period.label() }}</span></h3>
+    <p class="muted">{{ not_available }}</p>
   {% else %}
     {% set installs = growth.installs %}
     {% set direction = "up" if installs.change > 0 else ("down" if installs.change < 0 else "flat") %}
-    <h3>Play: growth <span class="range">{{ growth.period.label() }}</span></h3>
+    <h3>Play: growth <span class="range">{{ growth.coverage.label() }}</span></h3>
     <div class="figure">
       <div>
         <div class="label">New installs</div>
         <div class="value">{{ installs.value | count }}</div>
         <div class="change {{ direction }}">{{ installs.change | signed }}{% if installs.percent_change is not none %} ({{ installs.percent_change | signed(1, "%") }}){% endif %}</div>
-        <div class="was">{{ installs.previous | count }} the week before</div>
+        <div class="was">{{ installs.previous | count }} {{ growth.coverage.covered.length | before }}</div>
       </div>
       <div class="chart"><canvas id="{{ chart(installs.series, "New installs") }}" role="img" aria-label="Daily new installs"></canvas></div>
     </div>

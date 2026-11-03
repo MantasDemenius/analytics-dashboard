@@ -1,7 +1,7 @@
 import unittest
-from datetime import date
+from datetime import date, timedelta
 
-from weekly_report.model import Metric, Point
+from weekly_report.model import Unavailable
 from weekly_report.periods import Period
 from weekly_report.sources import play_bucket
 from weekly_report.sources.play_bucket import (
@@ -9,7 +9,6 @@ from weekly_report.sources.play_bucket import (
     daily_totals,
     installs_growth,
     installs_path,
-    summarise,
 )
 
 PACKAGE = "com.example.app"
@@ -85,59 +84,14 @@ class DailyTotalsTest(unittest.TestCase):
         self.assertIn("No Such Column", str(raised.exception))
 
 
-class SummariseTest(unittest.TestCase):
-    period = Period(date(2026, 10, 19), date(2026, 10, 21))
-
-    def test_sums_the_period_and_the_one_before(self):
-        daily = {
-            date(2026, 10, 16): 1,
-            date(2026, 10, 17): 2,
-            date(2026, 10, 18): 3,
-            date(2026, 10, 19): 4,
-            date(2026, 10, 20): 5,
-            date(2026, 10, 21): 6,
-            date(2026, 10, 22): 100,
-        }
-        self.assertEqual(
-            summarise(daily, self.period),
-            Metric(
-                value=15,
-                previous=6,
-                series=(
-                    Point(date(2026, 10, 19), 4),
-                    Point(date(2026, 10, 20), 5),
-                    Point(date(2026, 10, 21), 6),
-                ),
-            ),
-        )
-
-    def test_missing_days_count_as_zero(self):
-        daily = {date(2026, 10, 17): 2, date(2026, 10, 20): 5}
-        self.assertEqual(
-            summarise(daily, self.period),
-            Metric(
-                value=5,
-                previous=2,
-                series=(
-                    Point(date(2026, 10, 19), 0),
-                    Point(date(2026, 10, 20), 5),
-                    Point(date(2026, 10, 21), 0),
-                ),
-            ),
-        )
-
-    def test_no_days_at_all_is_zero_against_zero(self):
-        metric = summarise({}, self.period)
-        self.assertEqual((metric.value, metric.previous), (0, 0))
-        self.assertEqual([point.value for point in metric.series], [0, 0, 0])
-
-
 class InstallsGrowthTest(unittest.TestCase):
     def test_reports_the_newest_week_complete_in_the_file(self):
         rows = {f"2026-10-{day:02d}": day for day in range(1, 29)}
         bucket = Bucket({installs_path(PACKAGE, date(2026, 10, 1)): installs_csv(rows)})
         growth = installs_growth(bucket.read, PACKAGE, today=date(2026, 11, 2))
-        self.assertEqual(growth.period, Period(date(2026, 10, 19), date(2026, 10, 25)))
+        self.assertEqual(
+            growth.coverage.period, Period(date(2026, 10, 19), date(2026, 10, 25))
+        )
         self.assertEqual(growth.installs.value, sum(range(19, 26)))
         self.assertEqual(growth.installs.previous, sum(range(12, 19)))
 
@@ -151,7 +105,9 @@ class InstallsGrowthTest(unittest.TestCase):
             }
         )
         growth = installs_growth(bucket.read, PACKAGE, today=date(2026, 11, 6))
-        self.assertEqual(growth.period, Period(date(2026, 10, 26), date(2026, 11, 1)))
+        self.assertEqual(
+            growth.coverage.period, Period(date(2026, 10, 26), date(2026, 11, 1))
+        )
         self.assertEqual(growth.installs.value, 6 * 1 + 1 * 2)
         self.assertEqual(growth.installs.previous, 6 * 1)
 
@@ -165,7 +121,9 @@ class InstallsGrowthTest(unittest.TestCase):
             }
         )
         growth = installs_growth(bucket.read, PACKAGE, today=date(2026, 9, 1))
-        self.assertEqual(growth.period, Period(date(2026, 8, 3), date(2026, 8, 9)))
+        self.assertEqual(
+            growth.coverage.period, Period(date(2026, 8, 3), date(2026, 8, 9))
+        )
         self.assertEqual(growth.installs.previous, 3 * 5 + 1 * 2)
         self.assertIn(installs_path(PACKAGE, date(2026, 7, 1)), bucket.read_paths)
 
@@ -175,7 +133,9 @@ class InstallsGrowthTest(unittest.TestCase):
             {installs_path(PACKAGE, date(2026, 10, 1)): installs_csv(october)}
         )
         growth = installs_growth(bucket.read, PACKAGE, today=date(2026, 11, 1))
-        self.assertEqual(growth.period, Period(date(2026, 10, 19), date(2026, 10, 25)))
+        self.assertEqual(
+            growth.coverage.period, Period(date(2026, 10, 19), date(2026, 10, 25))
+        )
 
     def test_no_rows_in_any_file_fails_the_source(self):
         bucket = Bucket({installs_path(PACKAGE, date(2026, 11, 1)): installs_csv({})})
@@ -183,8 +143,114 @@ class InstallsGrowthTest(unittest.TestCase):
             installs_growth(bucket.read, PACKAGE, today=date(2026, 11, 2))
         self.assertIn("2026-10", str(raised.exception))
 
+    def test_a_default_week_is_complete(self):
+        rows = {f"2026-10-{day:02d}": 1 for day in range(1, 29)}
+        bucket = Bucket({installs_path(PACKAGE, date(2026, 10, 1)): installs_csv(rows)})
+        growth = installs_growth(bucket.read, PACKAGE, today=date(2026, 11, 2))
+        self.assertIsNone(growth.coverage.data_to)
+
     def test_names_the_source(self):
         self.assertEqual(play_bucket.SOURCE, "Play report bucket")
+
+
+class InstallsGrowthForARangeTest(unittest.TestCase):
+    today = date(2026, 11, 3)
+
+    def bucket(self, **months: dict[str, int]) -> Bucket:
+        return Bucket(
+            {
+                installs_path(PACKAGE, date.fromisoformat(f"{month}-01")): installs_csv(
+                    rows
+                )
+                for month, rows in months.items()
+            }
+        )
+
+    def growth(self, bucket: Bucket, start: date, end: date):
+        return installs_growth(bucket.read, PACKAGE, self.today, Period(start, end))
+
+    def test_a_full_range_sums_it_against_the_range_before(self):
+        rows = {f"2026-10-{day:02d}": day for day in range(1, 29)}
+        growth = self.growth(
+            self.bucket(**{"2026-10": rows}), date(2026, 10, 15), date(2026, 10, 18)
+        )
+        self.assertEqual(
+            growth.coverage.period, Period(date(2026, 10, 15), date(2026, 10, 18))
+        )
+        self.assertIsNone(growth.coverage.data_to)
+        self.assertEqual(growth.installs.value, 15 + 16 + 17 + 18)
+        self.assertEqual(growth.installs.previous, 11 + 12 + 13 + 14)
+        self.assertEqual(len(growth.installs.series), 4)
+
+    def test_a_range_does_not_have_to_be_a_week_or_start_on_a_monday(self):
+        rows = {f"2026-10-{day:02d}": 1 for day in range(1, 29)}
+        growth = self.growth(
+            self.bucket(**{"2026-10": rows}), date(2026, 10, 14), date(2026, 10, 14)
+        )
+        self.assertEqual((growth.installs.value, growth.installs.previous), (1, 1))
+
+    def test_a_range_partly_covered_is_cut_and_the_previous_range_is_cut_to_match(self):
+        rows = {f"2026-10-{day:02d}": day for day in range(1, 29)}
+        growth = self.growth(
+            self.bucket(**{"2026-10": rows}), date(2026, 10, 26), date(2026, 11, 1)
+        )
+        self.assertEqual(growth.coverage.data_to, date(2026, 10, 28))
+        self.assertEqual(growth.installs.value, 26 + 27 + 28)
+        self.assertEqual(growth.installs.previous, 19 + 20 + 21)
+        self.assertEqual(len(growth.installs.series), 3)
+
+    def test_a_range_the_files_do_not_reach_is_unavailable(self):
+        rows = {f"2026-10-{day:02d}": 1 for day in range(1, 29)}
+        period = Period(date(2026, 10, 29), date(2026, 11, 4))
+        growth = self.growth(self.bucket(**{"2026-10": rows}), period.start, period.end)
+        self.assertEqual(growth, Unavailable(play_bucket.SOURCE, period))
+
+    def test_a_range_before_the_bucket_has_any_file_is_unavailable(self):
+        rows = {f"2026-10-{day:02d}": 1 for day in range(1, 29)}
+        period = Period(date(2025, 3, 3), date(2025, 3, 9))
+        growth = self.growth(self.bucket(**{"2026-10": rows}), period.start, period.end)
+        self.assertEqual(growth, Unavailable(play_bucket.SOURCE, period))
+
+    def test_a_range_across_a_month_boundary_reads_both_months(self):
+        october = {f"2026-10-{day:02d}": 1 for day in range(1, 32)}
+        november = {f"2026-11-{day:02d}": 5 for day in range(1, 8)}
+        growth = self.growth(
+            self.bucket(**{"2026-10": october, "2026-11": november}),
+            date(2026, 10, 30),
+            date(2026, 11, 2),
+        )
+        self.assertEqual(growth.installs.value, 1 + 1 + 5 + 5)
+        self.assertEqual(growth.installs.previous, 4)
+        self.assertIsNone(growth.coverage.data_to)
+
+    def test_a_quiet_stretch_inside_the_data_counts_as_zero(self):
+        rows = {"2026-10-01": 3, "2026-10-28": 3}
+        growth = self.growth(
+            self.bucket(**{"2026-10": rows}), date(2026, 10, 10), date(2026, 10, 12)
+        )
+        self.assertEqual(growth.installs.value, 0)
+        self.assertEqual(growth.coverage.data_to, None)
+
+    def test_a_ten_day_range_has_twelve_ten_day_periods_in_its_trend(self):
+        july = {f"2026-07-{day:02d}": 1 for day in range(1, 32)}
+        august = {f"2026-08-{day:02d}": 1 for day in range(1, 32)}
+        september = {f"2026-09-{day:02d}": 2 for day in range(1, 31)}
+        growth = self.growth(
+            self.bucket(**{"2026-07": july, "2026-08": august, "2026-09": september}),
+            date(2026, 9, 21),
+            date(2026, 9, 30),
+        )
+        trend = growth.installs.trend
+        self.assertEqual(
+            [point.value for point in trend], [0, 0, 2] + [10] * 6 + [20] * 3
+        )
+        self.assertEqual(trend[0].day, date(2026, 9, 21) - timedelta(days=110))
+
+    def test_the_trend_reads_every_month_it_needs(self):
+        rows = {f"2026-10-{day:02d}": 1 for day in range(1, 29)}
+        bucket = self.bucket(**{"2026-10": rows})
+        self.growth(bucket, date(2026, 10, 15), date(2026, 10, 21))
+        self.assertIn(installs_path(PACKAGE, date(2026, 7, 1)), bucket.read_paths)
 
 
 if __name__ == "__main__":
