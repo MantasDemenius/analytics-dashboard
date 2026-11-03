@@ -10,21 +10,13 @@ import sys
 import webbrowser
 from collections.abc import Callable
 from datetime import date, timedelta
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 from weekly_report import mail, pdf
 from weekly_report.config import AppConfig, ConfigError, load_apps, load_report
-from weekly_report.model import (
-    AdMob,
-    AppReport,
-    Crashlytics,
-    Failure,
-    Feedback,
-    Report,
-    Reviews,
-    Unavailable,
-    Vitals,
-)
+from weekly_report.model import AdMob, AppReport, Failure, Report, Unavailable
 from weekly_report.periods import Period, week_ending_by
 from weekly_report.render import render, summary, write
 from weekly_report.sources import (
@@ -95,58 +87,50 @@ def attempt[T](source: str, build: Callable[[], T]) -> T | Failure:
         return Failure(source, str(error) or type(error).__name__)
 
 
-def from_bucket[T](
-    app: AppConfig,
-    today: date,
-    period: Period | None,
-    section: Callable[[play_bucket.Reader, str, date, Period | None], T],
-) -> T | Failure:
-    return attempt(
+type SectionBuilder = Callable[[AppConfig, date, Period | None], Any]
+
+APP_SECTIONS: dict[str, tuple[str, SectionBuilder]] = {
+    "growth": (
         play_bucket.SOURCE,
-        lambda: section(play_bucket.bucket_reader(app), app.package, today, period),
-    )
-
-
-def from_play_reviews(
-    app: AppConfig, today: date, period: Period | None
-) -> Reviews | Unavailable | Failure:
-    return attempt(
+        lambda app, today, period: play_bucket.growth(
+            play_bucket.bucket_reader(app), app.package, today, period
+        ),
+    ),
+    "listing": (
+        play_bucket.SOURCE,
+        lambda app, today, period: play_bucket.listing(
+            play_bucket.bucket_reader(app), app.package, today, period
+        ),
+    ),
+    "reviews": (
         play_reviews.SOURCE,
-        lambda: play_reviews.reviews(
+        lambda app, today, period: play_reviews.reviews(
             play_bucket.bucket_reader(app),
             play_reviews.api_reader(app),
             app.package,
             today,
             period,
         ),
-    )
-
-
-def from_play_vitals(
-    app: AppConfig, period: Period | None
-) -> Vitals | Unavailable | Failure:
-    return attempt(
+    ),
+    "vitals": (
         play_vitals.SOURCE,
-        lambda: play_vitals.vitals(*play_vitals.readers(app), period),
-    )
-
-
-def from_crashlytics(
-    app: AppConfig, today: date, period: Period | None
-) -> Crashlytics | Unavailable | Failure:
-    return attempt(
+        lambda app, today, period: play_vitals.vitals(
+            *play_vitals.readers(app), period
+        ),
+    ),
+    "crashlytics": (
         crashlytics.SOURCE,
-        lambda: crashlytics.crashlytics(crashlytics.reader(app), today, period),
-    )
-
-
-def from_feedback(
-    app: AppConfig, today: date, period: Period | None
-) -> Feedback | Unavailable | Failure:
-    return attempt(
+        lambda app, today, period: crashlytics.crashlytics(
+            crashlytics.reader(app), today, period
+        ),
+    ),
+    "feedback": (
         feedback.SOURCE,
-        lambda: feedback.feedback(*feedback.readers(app), today, period),
-    )
+        lambda app, today, period: feedback.feedback(
+            *feedback.readers(app), today, period
+        ),
+    ),
+}
 
 
 def from_admob(
@@ -163,16 +147,11 @@ def app_report(
     period: Period | None,
     ads: AdMob | Unavailable | Failure,
 ) -> AppReport:
-    return AppReport(
-        app=app.name,
-        growth=from_bucket(app, today, period, play_bucket.growth),
-        listing=from_bucket(app, today, period, play_bucket.listing),
-        reviews=from_play_reviews(app, today, period),
-        vitals=from_play_vitals(app, period),
-        crashlytics=from_crashlytics(app, today, period),
-        feedback=from_feedback(app, today, period),
-        admob=ads,
-    )
+    sections = {
+        field: attempt(source, partial(build, app, today, period))
+        for field, (source, build) in APP_SECTIONS.items()
+    }
+    return AppReport(app=app.name, admob=ads, **sections)
 
 
 def build_report(
