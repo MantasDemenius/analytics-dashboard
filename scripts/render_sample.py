@@ -68,7 +68,7 @@ def swinging(
     period: Period, base: float, slope: float, this_week: float
 ) -> dict[date, float]:
     """Made-up counts per day: a gentle trend with a slow swing, then `this_week` per day."""
-    first = period.trailing(TREND_PERIODS)[0].start
+    first = period.trend_start()
     daily = {}
     for offset in range((period.start - first).days):
         day = first + timedelta(days=offset)

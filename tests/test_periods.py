@@ -105,6 +105,16 @@ class PeriodTest(unittest.TestCase):
         self.assertEqual(period.trailing(1), [period])
 
 
+class TrendStartTest(unittest.TestCase):
+    def test_is_the_first_day_of_the_oldest_of_12_periods(self):
+        week = Period(date(2026, 10, 19), date(2026, 10, 25))
+        self.assertEqual(week.trend_start(), date(2026, 8, 3))
+
+    def test_follows_the_length_of_the_period(self):
+        three_days = Period(date(2026, 10, 12), date(2026, 10, 14))
+        self.assertEqual(three_days.trend_start(), date(2026, 9, 9))
+
+
 class CoverageTest(unittest.TestCase):
     period = Period(date(2026, 10, 26), date(2026, 11, 1))
 

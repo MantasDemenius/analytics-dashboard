@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from weekly_report.model import Unavailable, Vitals
 from weekly_report.periods import Period
 from weekly_report.sources import play_vitals
-from weekly_report.sources.play_bucket import SourceError
+from weekly_report.sources.shared import SourceError
 
 ZONE = {"id": "America/Los_Angeles"}
 RATES = {

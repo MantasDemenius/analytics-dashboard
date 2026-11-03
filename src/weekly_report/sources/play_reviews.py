@@ -11,13 +11,17 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from weekly_report.config import AppConfig
 from weekly_report.model import Label, Metric, Review, Reviews, Unavailable
-from weekly_report.periods import TREND_PERIODS, Coverage, Period, week_ending_by
-from weekly_report.sources.play_bucket import Reader, SourceError, memoized
+from weekly_report.periods import Period, week_ending_by
+from weekly_report.sources.play_bucket import Reader, memoized
+from weekly_report.sources.shared import (
+    SourceError,
+    reached,
+    service_account_credentials,
+)
 
 SOURCE = "Play reviews"
 SCOPE = "https://www.googleapis.com/auth/androidpublisher"
@@ -185,18 +189,16 @@ def uncovered_days(
     return tuple(missing)
 
 
-def reaching_report(
-    period: Period, today: date, from_csv: list[CsvReview]
-) -> Coverage | None:
-    """How far the reviews report is known to reach into `period`.
+def report_reach(period: Period, today: date, from_csv: list[CsvReview]) -> date:
+    """The last day the reviews report is known to cover.
 
     The report is trusted for days older than the API's window; for newer days it reaches the
-    newest day any of its rows names. None when it does not reach the period at all.
+    newest day any of its rows names. A report with no rows claims no lag.
     """
     if not from_csv:
-        return Coverage(period)
+        return period.end
     newest = max(max(each.submitted.date(), each.updated.date()) for each in from_csv)
-    return Coverage.reaching(period, max(newest, today - timedelta(days=API_DAYS)))
+    return max(newest, today - timedelta(days=API_DAYS))
 
 
 def merged_cards(
@@ -269,16 +271,16 @@ def reviews(
     """Ratings and reviews for `period`, or for the week that just ended."""
     read = memoized(read)
     period = period or week_ending_by(today - timedelta(days=1))
-    trend_start = period.trailing(TREND_PERIODS)[0].start
     window = timedelta(days=STORE_RATING_DAYS - 1)
     from_csv, absent = read_csv_reviews(
-        read, package, Period(trend_start - window, period.end)
+        read, package, Period(period.trend_start() - window, period.end)
     )
     uncovered = uncovered_days(period, today, absent)
-    coverage = None
-    if sum(gap.length for gap in uncovered) < period.length:
-        coverage = reaching_report(period, today, from_csv)
-    if coverage is None:
+    coverage = reached(SOURCE, period, report_reach(period, today, from_csv))
+    if (
+        isinstance(coverage, Unavailable)
+        or sum(gap.length for gap in uncovered) >= period.length
+    ):
         return Unavailable(SOURCE, period)
     api_reaches = period.end >= today - timedelta(days=API_DAYS)
     from_api = [api_review(raw) for raw in list_reviews()] if api_reaches else []
@@ -314,10 +316,11 @@ def reviews(
 
 
 def api_reader(app: AppConfig) -> ApiReader:
-    credentials = service_account.Credentials.from_service_account_file(
-        str(app.service_account_key), scopes=[SCOPE]
+    client = build(
+        "androidpublisher",
+        "v3",
+        credentials=service_account_credentials(app, SCOPE),
     )
-    client = build("androidpublisher", "v3", credentials=credentials)
 
     def read_page(token: str | None) -> dict:
         return (

@@ -5,11 +5,11 @@ from weekly_report.model import Unavailable
 from weekly_report.periods import Period
 from weekly_report.sources import play_bucket
 from weekly_report.sources.play_bucket import (
-    SourceError,
     daily_totals,
     installs_path,
     store_performance_path,
 )
+from weekly_report.sources.shared import SourceError
 
 PACKAGE = "com.example.app"
 HEADER = (

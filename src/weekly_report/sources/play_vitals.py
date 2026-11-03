@@ -7,13 +7,16 @@ how far its data reaches (`freshnessInfo`), which decides the period when none i
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from weekly_report.config import AppConfig
 from weekly_report.model import Metric, Unavailable, Vitals
-from weekly_report.periods import TREND_PERIODS, Coverage, Period, week_ending_by
-from weekly_report.sources.play_bucket import SourceError
+from weekly_report.periods import Period
+from weekly_report.sources.shared import (
+    SourceError,
+    reached,
+    service_account_credentials,
+)
 
 SOURCE = "Play vitals"
 SCOPE = "https://www.googleapis.com/auth/playdeveloperreporting"
@@ -85,11 +88,11 @@ def vitals(
 ) -> Vitals | Unavailable:
     """Crash and ANR rate for `period`, or for the newest complete week both metric sets reach."""
     last = min(last_data_day(read_set(name)) for name in (CRASH_SET, ANR_SET))
-    period = period or week_ending_by(last)
-    coverage = Coverage.reaching(period, last)
-    if coverage is None:
-        return Unavailable(SOURCE, period)
-    first = period.trailing(TREND_PERIODS)[0].start
+    coverage = reached(SOURCE, period, last)
+    if isinstance(coverage, Unavailable):
+        return coverage
+    period = coverage.period
+    first = period.trend_start()
 
     def levels(name: str, rate: str) -> Metric | None:
         body = query_body(rate, first, coverage.covered.end)
@@ -104,11 +107,10 @@ def vitals(
 
 
 def readers(app: AppConfig) -> tuple[SetReader, RowReader]:
-    credentials = service_account.Credentials.from_service_account_file(
-        str(app.service_account_key), scopes=[SCOPE]
-    )
     vitals_api = build(
-        "playdeveloperreporting", "v1beta1", credentials=credentials
+        "playdeveloperreporting",
+        "v1beta1",
+        credentials=service_account_credentials(app, SCOPE),
     ).vitals()
     metric_sets = {CRASH_SET: vitals_api.crashrate(), ANR_SET: vitals_api.anrrate()}
 

@@ -15,7 +15,8 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 from weekly_report.model import AdMob, AdUnit, Metric, Point, Unavailable
-from weekly_report.periods import TREND_PERIODS, Coverage, Period, week_ending_by
+from weekly_report.periods import Coverage, Period
+from weekly_report.sources.shared import reached
 
 SOURCE = "AdMob"
 TOKEN_FILE = Path("config/admob-token.json")
@@ -142,11 +143,10 @@ def ad_unit(daily: Daily, coverage: Coverage) -> AdUnit:
 def admob(
     read: ReportReader, today: date, period: Period | None = None
 ) -> AdMob | Unavailable:
-    period = period or week_ending_by(today - timedelta(days=1))
-    coverage = Coverage.reaching(period, today - timedelta(days=1))
-    if coverage is None:
-        return Unavailable(SOURCE, period)
-    first = period.trailing(TREND_PERIODS)[0].start
+    coverage = reached(SOURCE, period, today - timedelta(days=1))
+    if isinstance(coverage, Unavailable):
+        return coverage
+    first = coverage.period.trend_start()
     messages = read(spec(["DATE", "AD_UNIT", "FORMAT"], first, coverage.covered.end))
     monthly = read(spec(["MONTH"], *monthly_range(coverage.covered.end)))
     units = daily_units(messages).values()

@@ -8,7 +8,6 @@ from datetime import UTC, date, datetime, time, timedelta
 
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
-from google.oauth2 import service_account
 
 from weekly_report.config import AppConfig
 from weekly_report.model import (
@@ -18,10 +17,14 @@ from weekly_report.model import (
     Unavailable,
     UserReport,
 )
-from weekly_report.periods import Coverage, Period, week_ending_by
+from weekly_report.periods import Period
+from weekly_report.sources.shared import (
+    CLOUD_PLATFORM_SCOPE,
+    reached,
+    service_account_credentials,
+)
 
 SOURCE = "Firestore feedback"
-SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 KINDS = {"bug": ReportKind.BUG, "feedback": ReportKind.FEEDBACK}
 
 type DocumentReader = Callable[[Period], list[dict]]
@@ -60,10 +63,10 @@ def feedback(
     Reports are current to yesterday, so a range reaching today is covered up to yesterday and
     compared with the same days before it. A range that starts today or later is unavailable.
     """
-    period = period or week_ending_by(today - timedelta(days=1))
-    coverage = Coverage.reaching(period, today - timedelta(days=1))
-    if coverage is None:
-        return Unavailable(SOURCE, period)
+    coverage = reached(SOURCE, period, today - timedelta(days=1))
+    if isinstance(coverage, Unavailable):
+        return coverage
+    period = coverage.period
     covered = coverage.covered
     before = period.previous().cut(covered.length)
     reports = [
@@ -90,11 +93,9 @@ def feedback(
 
 def readers(app: AppConfig) -> tuple[DocumentReader, UnhandledCounter]:
     """Read only: the documents created in a window, and the count of those not yet handled."""
-    credentials = service_account.Credentials.from_service_account_file(
-        str(app.service_account_key), scopes=[SCOPE]
-    )
     collection = firestore.Client(
-        project=app.firebase_project, credentials=credentials
+        project=app.firebase_project,
+        credentials=service_account_credentials(app, CLOUD_PLATFORM_SCOPE),
     ).collection(app.feedback_collection)
 
     def read(window: Period) -> list[dict]:

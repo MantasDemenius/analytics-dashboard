@@ -7,11 +7,15 @@ from datetime import date, timedelta
 
 from google.api_core.exceptions import NotFound
 from google.cloud import storage
-from google.oauth2 import service_account
 
 from weekly_report.config import AppConfig
 from weekly_report.model import Growth, Listing, Metric, Unavailable
-from weekly_report.periods import TREND_PERIODS, Coverage, Period, week_ending_by
+from weekly_report.periods import Period, week_ending_by
+from weekly_report.sources.shared import (
+    SourceError,
+    reached,
+    service_account_credentials,
+)
 
 SOURCE = "Play report bucket"
 INSTALLS = "Daily User Installs"
@@ -19,12 +23,9 @@ UNINSTALLS = "Daily User Uninstalls"
 VISITORS = "Store listing visitors"
 ACQUISITIONS = "Store listing acquisitions"
 LOOKBACK_DAYS = 31
+SCOPE = "https://www.googleapis.com/auth/devstorage.read_only"
 
 type Reader = Callable[[str], bytes | None]
-
-
-class SourceError(Exception):
-    pass
 
 
 def installs_path(package: str, month: date) -> str:
@@ -91,7 +92,7 @@ def reporting_period(
 
 
 def with_trend(period: Period) -> Period:
-    return Period(period.trailing(TREND_PERIODS)[0].start, period.end)
+    return Period(period.trend_start(), period.end)
 
 
 def growth(
@@ -106,9 +107,9 @@ def growth(
     period = reporting_period(read, path_for, INSTALLS, today, period)
     span = with_trend(period)
     installs = daily_column(read, path_for, span, INSTALLS)
-    coverage = Coverage.reaching(period, max(installs, default=None))
-    if coverage is None:
-        return Unavailable(SOURCE, period)
+    coverage = reached(SOURCE, period, max(installs, default=None))
+    if isinstance(coverage, Unavailable):
+        return coverage
     uninstalls = daily_column(read, path_for, span, UNINSTALLS)
     net = {
         day: installs.get(day, 0) - uninstalls.get(day, 0)
@@ -134,9 +135,9 @@ def listing(
     period = reporting_period(read, path_for, VISITORS, today, period)
     span = with_trend(period)
     visitors = daily_column(read, path_for, span, VISITORS)
-    coverage = Coverage.reaching(period, max(visitors, default=None))
-    if coverage is None:
-        return Unavailable(SOURCE, period)
+    coverage = reached(SOURCE, period, max(visitors, default=None))
+    if isinstance(coverage, Unavailable):
+        return coverage
     visited = Metric.summed(visitors, coverage)
     acquired = Metric.summed(daily_column(read, path_for, span, ACQUISITIONS), coverage)
     return Listing(
@@ -148,12 +149,9 @@ def listing(
 
 
 def bucket_reader(app: AppConfig) -> Reader:
-    credentials = service_account.Credentials.from_service_account_file(
-        str(app.service_account_key),
-        scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
-    )
     bucket = storage.Client(
-        project=app.firebase_project, credentials=credentials
+        project=app.firebase_project,
+        credentials=service_account_credentials(app, SCOPE),
     ).bucket(app.play_bucket)
 
     def read(path: str) -> bytes | None:

@@ -39,6 +39,10 @@ class Period:
             periods.append(periods[-1].previous())
         return periods[::-1]
 
+    def trend_start(self) -> date:
+        """The first day of the oldest of the `TREND_PERIODS` periods ending with this one."""
+        return self.trailing(TREND_PERIODS)[0].start
+
     def months(self) -> list[date]:
         """The first day of every calendar month the period touches, in order."""
         months = []

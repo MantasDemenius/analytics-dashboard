@@ -7,7 +7,6 @@ Days are UTC. The API only looks back 90 calendar days, and `topIssues` pages wi
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from weekly_report.config import AppConfig
@@ -21,10 +20,14 @@ from weekly_report.model import (
     Signal,
     Unavailable,
 )
-from weekly_report.periods import TREND_PERIODS, Coverage, Period, week_ending_by
+from weekly_report.periods import TREND_PERIODS, Period
+from weekly_report.sources.shared import (
+    CLOUD_PLATFORM_SCOPE,
+    reached,
+    service_account_credentials,
+)
 
 SOURCE = "Crashlytics"
-SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 DISCOVERY = "https://firebasecrashlytics.googleapis.com/$discovery/rest?version=v1alpha"
 WINDOW_DAYS = 90
 PAGE_SIZE = 100
@@ -116,10 +119,10 @@ def crashlytics(
     Crashlytics holds the last 90 days and is current to yesterday. A range that starts before
     the 90 days is unavailable; a comparison or trend period that does, is left out.
     """
-    period = period or week_ending_by(today - timedelta(days=1))
+    coverage = reached(SOURCE, period, today - timedelta(days=1))
+    period = coverage.period
     oldest = today - timedelta(days=WINDOW_DAYS)
-    coverage = Coverage.reaching(period, today - timedelta(days=1))
-    if coverage is None or period.start < oldest:
+    if isinstance(coverage, Unavailable) or period.start < oldest:
         return Unavailable(SOURCE, period)
     days = coverage.covered.length
     levels = {
@@ -143,14 +146,11 @@ def crashlytics(
 
 
 def reader(app: AppConfig) -> ReportReader:
-    credentials = service_account.Credentials.from_service_account_file(
-        str(app.service_account_key), scopes=[SCOPE]
-    )
     reports = (
         build(
             "firebasecrashlytics",
             "v1alpha",
-            credentials=credentials,
+            credentials=service_account_credentials(app, CLOUD_PLATFORM_SCOPE),
             discoveryServiceUrl=DISCOVERY,
             static_discovery=False,
         )

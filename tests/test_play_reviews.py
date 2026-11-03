@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime
 from weekly_report.model import Label, Unavailable
 from weekly_report.periods import Period
 from weekly_report.sources import play_reviews
-from weekly_report.sources.play_bucket import SourceError
 from weekly_report.sources.play_reviews import all_pages, reviews_path
+from weekly_report.sources.shared import SourceError
 
 PACKAGE = "com.example.app"
 TODAY = date(2026, 11, 3)
