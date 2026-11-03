@@ -5,8 +5,10 @@ apps (Play Console, Crashlytics, Firestore feedback, AdMob, later Google Analyti
 HTML report with charts, prints it to PDF with headless Chrome and emails it through the Gmail API.
 Runs on the author's PC every Monday via Windows Task Scheduler. Apps join through config.
 
-**No code exists yet.** Read `docs/decisions.md` before anything else: it holds every decision
-made so far, the rejected options, the unverified facts to check first, and the open questions.
+The code is the `src/weekly_report/` package, run as `uv run weekly-report [--email] [--no-open]`;
+its config keys are documented in `config.example/`. Read `docs/decisions.md` before anything
+else: it holds every decision made so far, the rejected options, the unverified facts to check
+first, and the open questions.
 Then read the gitignored `config/apps.md`, which names the apps and their identifiers. Open work
 lives on GitHub: the pinned Roadmap issue lists everything not yet ticketed, and the tickets settle
 the unknowns before a grill and a spec.

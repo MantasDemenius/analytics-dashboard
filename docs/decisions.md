@@ -38,13 +38,13 @@ weekly report covering every app, built so later apps plug in through config.
   (`MantasDemenius/analytics-dashboard`). Code, HTML template and docs are public. Everything
   private lives inside the local repo but gitignored: `config/` (the real config, service account
   keys, the OAuth client file, saved refresh token and the app notes), `out/` (the latest
-  generated HTML and PDF report, which carry feedback text and users' emails) and `logs/`. A `config.example.toml` with placeholder values is what gets committed. GitHub secret
+  generated HTML and PDF report, which carry feedback text and users' emails) and `logs/`. The `config.example/` pair (`report.toml`, `apps/myapp.toml`) with placeholder values is what gets committed. GitHub secret
   scanning and push protection are on by default for public repos and are a safety net, not the
   plan.
 - **Nothing app-specific in the repo**, docs included: no app names, package names, Firebase
   project IDs, AdMob app, publisher or ad unit IDs, or paths into the apps' own repos. Most of these
   are technically public (they ship in the APK), but the author does not want them published. Code,
-  tests and docs stay generic; `config.example.toml` and test fixtures use made-up values.
+  tests and docs stay generic; `config.example/` and test fixtures use made-up values.
 - **Free.** No paid service, no billing account turned on, no Claude tokens on the weekly path.
 - **Text is never stored.** Review text and feedback text are fetched fresh each run and live only
   in the one latest report in `out/`, overwritten every run. The apps promise users their feedback
