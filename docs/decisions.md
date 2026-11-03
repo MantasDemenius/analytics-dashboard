@@ -2,9 +2,9 @@
 
 Outcome of a grilling session held on 2026-10-27, before this project had any code, and later
 changes made in this repo (the language moved from Dart to Python on the same day), plus the phase 1
-grilling session of 2026-11-03 ("Phase 1 design" below). Nothing here is specced yet. No
-unverified fact is open now, and everything else still to be specced is on the pinned Roadmap
-issue.
+grilling session of 2026-11-03 ("Phase 1 design" below). Phase 1 is specced as GitHub issue #9
+and its tickets. No unverified fact is open now, and everything not yet specced is on the pinned
+Roadmap issue.
 
 App-specific details (which apps, their package names, Firebase projects, AdMob IDs, where their
 own repos and docs live) are not in this repo. They are in the gitignored `config/apps.md` on the
@@ -482,4 +482,4 @@ Nothing is open.
 
 ## Open questions for the spec
 
-None open. Phase 1 is grilled; the spec is next.
+None open. Phase 1 is grilled and specced as issue #9.
