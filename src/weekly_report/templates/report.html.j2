@@ -81,7 +81,9 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .pair .l { display: block; font-size: 12px; color: var(--ink2); font-weight: 550; }
 .pair .v { display: block; font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.pair.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pair .d { font-size: 12.5px; font-weight: 550; }
+.pair .v + .was { margin-left: 0; }
 .pair .was { font-size: 12px; color: var(--muted); margin-left: 6px; }
 .caution { background: #fff6e0; border: 1px solid #ecd49a; border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; font-size: 12.5px; }
 .review p { margin: 6px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
@@ -93,6 +95,12 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 .tag.replied { background: #e4eefb; color: #1b57a6; }
 .rtitle { font-weight: 650; }
 .original { font-size: 12px; color: var(--muted); }
+.report .cause { font: 12px/1.45 ui-monospace, Consolas, monospace; color: var(--ink2); background: var(--plane); border-radius: 8px; padding: 8px 10px; }
+.report .likes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.report .private { font-size: 12px; color: var(--muted); }
+.tag.bug { background: #fdecea; color: var(--bad); }
+.tag.feedback { background: #e3f4ec; color: var(--good); }
+.card.reports { break-inside: auto; }
 .reply { font-size: 12.5px; border-left: 3px solid var(--line); padding-left: 10px; color: var(--ink2); }
 
 .card.issues { break-inside: auto; }
@@ -134,7 +142,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
 @media screen and (max-width: 700px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid { grid-template-columns: minmax(0, 1fr); }
-  .pair { grid-template-columns: minmax(0, 1fr); }
+  .pair, .pair.three { grid-template-columns: minmax(0, 1fr); }
   .vitals { grid-template-columns: minmax(0, 1fr); }
   .top { flex-direction: column; align-items: flex-start; }
   .key { text-align: left; }
@@ -155,6 +163,7 @@ h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
   .card { padding: 12px 14px 14px; }
   .card > header { break-after: avoid; }
   .reply { display: none; }
+  .private { display: none; }
   .app + .app { margin-top: 0; }
   .chart canvas { width: 100% !important; height: auto !important; }
 }

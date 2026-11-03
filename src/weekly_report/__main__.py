@@ -18,6 +18,7 @@ from weekly_report.model import (
     AppReport,
     Crashlytics,
     Failure,
+    Feedback,
     Report,
     Reviews,
     Unavailable,
@@ -25,7 +26,13 @@ from weekly_report.model import (
 )
 from weekly_report.periods import Period, week_ending_by
 from weekly_report.render import render, summary, write
-from weekly_report.sources import crashlytics, play_bucket, play_reviews, play_vitals
+from weekly_report.sources import (
+    crashlytics,
+    feedback,
+    play_bucket,
+    play_reviews,
+    play_vitals,
+)
 
 OUT_DIR = Path("out")
 PDF_PATH = OUT_DIR / "report.pdf"
@@ -131,6 +138,15 @@ def from_crashlytics(
     )
 
 
+def from_feedback(
+    app: AppConfig, today: date, period: Period | None
+) -> Feedback | Unavailable | Failure:
+    return attempt(
+        feedback.SOURCE,
+        lambda: feedback.feedback(*feedback.readers(app), today, period),
+    )
+
+
 def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
     return AppReport(
         app=app.name,
@@ -139,6 +155,7 @@ def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
         reviews=from_play_reviews(app, today, period),
         vitals=from_play_vitals(app, period),
         crashlytics=from_crashlytics(app, today, period),
+        feedback=from_feedback(app, today, period),
     )
 
 

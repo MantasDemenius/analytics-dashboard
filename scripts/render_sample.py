@@ -9,12 +9,16 @@ both rates above theirs with data ending inside the range, and a rate with no ch
 Crashlytics covers new, regressed, early, repetitive and plain issues of every kind and state,
 60 issues so the table runs over pages, a range with data ending inside it, a range at the 90
 day limit with no comparison, and a range with no issues.
+Feedback covers bug reports with and without an email, app ID, error and message, feedback with
+and without a message and liked items, every star level, a rise and a fall in each kind, a long
+list, a range with data ending inside it and a range with no reports. The email and app ID show
+on screen and are left out of the PDF.
 
 Run: uv run python scripts/render_sample.py
 """
 
 import math
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from weekly_report import pdf
@@ -23,6 +27,7 @@ from weekly_report.model import (
     Crashlytics,
     ErrorKind,
     Failure,
+    Feedback,
     Growth,
     Issue,
     IssueState,
@@ -31,10 +36,12 @@ from weekly_report.model import (
     Metric,
     Point,
     Report,
+    ReportKind,
     Review,
     Reviews,
     Signal,
     Unavailable,
+    UserReport,
     Vitals,
 )
 from weekly_report.periods import TREND_PERIODS, Coverage, Period
@@ -47,6 +54,7 @@ BUCKET_WEEK = REPORT_WEEK.previous()
 LISTING_WEEK = BUCKET_WEEK.previous()
 VITALS_WEEK = BUCKET_WEEK
 CRASHLYTICS_WEEK = REPORT_WEEK
+FEEDBACK_WEEK = REPORT_WEEK
 
 
 def swinging(
@@ -337,6 +345,132 @@ MANY_ISSUES = sorted_issues(
 )
 
 
+def feedback_section(
+    reports: tuple[UserReport, ...],
+    counts: tuple[int, int, int, int],
+    unhandled: int,
+    data_to: date | None = None,
+) -> Feedback:
+    """`counts` are the range's bug reports and feedback, then the same two a period earlier."""
+    bugs, suggestions, bugs_before, suggestions_before = counts
+    return Feedback(
+        Coverage(FEEDBACK_WEEK, data_to),
+        new=Metric(bugs + suggestions, bugs_before + suggestions_before),
+        bugs=Metric(bugs, bugs_before),
+        suggestions=Metric(suggestions, suggestions_before),
+        unhandled=unhandled,
+        reports=reports,
+    )
+
+
+def bug_report(
+    day: int,
+    message: str,
+    android: str | None = "14",
+    error: str | None = None,
+    email: str | None = None,
+    app_id: str | None = None,
+    hour: int = 10,
+) -> UserReport:
+    return UserReport(
+        ReportKind.BUG,
+        datetime(2026, 10, day, hour, 5, tzinfo=UTC),
+        "2.4.0",
+        message,
+        android,
+        error,
+        email,
+        app_id,
+        None,
+        (),
+    )
+
+
+def feedback_report(
+    day: int,
+    stars: int,
+    message: str,
+    liked: tuple[str, ...] = (),
+    version: str = "2.4.0",
+    hour: int = 16,
+) -> UserReport:
+    return UserReport(
+        ReportKind.FEEDBACK,
+        datetime(2026, 10, day, hour, 40, tzinfo=UTC),
+        version,
+        message,
+        None,
+        None,
+        None,
+        None,
+        stars,
+        liked,
+    )
+
+
+EXAMPLE_FEEDBACK = (
+    bug_report(
+        31,
+        "After importing a file the list stays empty and I cannot add anything new.\nI tried twice.",
+        email="reader@example.com",
+        app_id="a1b2c3d4e5f6",
+        error="FormatException: unexpected end of input (at character 412)",
+        hour=18,
+    ),
+    feedback_report(
+        31,
+        5,
+        "Love it. A search across everything would make it perfect.",
+        ("speed", "design", "ease"),
+        hour=9,
+    ),
+    bug_report(30, "", error="Import failed: file is not valid", email="x@example.com"),
+    feedback_report(30, 3, "", ("design",), version="2.3.1"),
+    bug_report(
+        29, "The back button closes the app instead of the screen.", android="13"
+    ),
+    feedback_report(29, 1, "Too many ads.", ()),
+    bug_report(
+        28,
+        "Widgets stop updating after a day.",
+        android=None,
+        app_id="f6e5d4c3b2a1",
+    ),
+    feedback_report(28, 4, "", ()),
+    feedback_report(
+        27,
+        2,
+        "A very long message without a single line break, written by someone who wanted to "
+        "describe every detail of how they use the app and what they would change, including "
+        "the notification sound that cannot be changed. " * 3,
+        ("content", "filters", "speed", "design", "ease"),
+    ),
+    bug_report(27, "Crash on start.", email="late@example.com", app_id="0a0b0c0d0e0f"),
+)
+
+
+def many_feedback() -> tuple[UserReport, ...]:
+    """Reports on every day of the range, 30 in all, newest first."""
+    reports = [
+        feedback_report(
+            26 + number % 5,
+            1 + number % 5,
+            f"Message number {number}, with a few words of opinion about the app.",
+            ("speed",) if number % 3 == 0 else (),
+            hour=8 + number % 12,
+        )
+        if number % 2
+        else bug_report(
+            26 + number % 5,
+            f"Bug number {number}, something went wrong.",
+            email=f"user{number}@example.com" if number % 4 == 0 else None,
+            hour=8 + number % 12,
+        )
+        for number in range(30)
+    ]
+    return tuple(sorted(reports, key=lambda each: each.at, reverse=True))
+
+
 def flat_week() -> dict[date, float]:
     daily = swinging(BUCKET_WEEK, base=30, slope=0.05, this_week=34)
     previous = BUCKET_WEEK.previous().days()
@@ -371,6 +505,7 @@ def sample() -> Report:
                 ),
                 vitals_section(crash=(0.42, 0.35), anr=(0.21, 0.24)),
                 crashlytics_section(98.2, 97.4, EXAMPLE_ISSUES),
+                feedback_section(EXAMPLE_FEEDBACK, (5, 5, 2, 7), unhandled=6),
             ),
             AppReport(
                 "Second App",
@@ -393,6 +528,12 @@ def sample() -> Report:
                 crashlytics_section(
                     94.1, 96.3, MANY_ISSUES, data_to=date(2026, 10, 30)
                 ),
+                feedback_section(
+                    many_feedback(),
+                    (15, 15, 20, 9),
+                    unhandled=41,
+                    data_to=date(2026, 10, 30),
+                ),
             ),
             AppReport(
                 "Third App",
@@ -401,6 +542,7 @@ def sample() -> Report:
                 reviews_section({}, 0),
                 vitals_section(crash=(1.09, 1.4), anr=(0.3, 0.3)),
                 crashlytics_section(99.1, 0, (), trend=1),
+                feedback_section((), (0, 0, 3, 1), unhandled=0),
             ),
             AppReport(
                 "Fourth App",
@@ -409,6 +551,7 @@ def sample() -> Report:
                 Failure("Play reviews", "403 Forbidden"),
                 Failure("Play vitals", "403 Forbidden"),
                 Failure("Crashlytics", "403 Forbidden"),
+                Failure("Firestore feedback", "403 Forbidden"),
             ),
             AppReport(
                 "Fifth App",
@@ -417,6 +560,7 @@ def sample() -> Report:
                 Unavailable("Play reviews", REPORT_WEEK),
                 Unavailable("Play vitals", VITALS_WEEK),
                 Unavailable("Crashlytics", CRASHLYTICS_WEEK),
+                Unavailable("Firestore feedback", FEEDBACK_WEEK),
             ),
         ),
     )

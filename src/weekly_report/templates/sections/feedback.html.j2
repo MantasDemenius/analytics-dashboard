@@ -1,0 +1,42 @@
+{% import "macros.html.j2" as m with context %}
+<section class="card wide">
+  <header><h3>Bug reports and feedback<span class="sub">sent from the app</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  <div class="pair three">
+  {% for shown in figures(app, feedback_figures) %}
+    <div><span class="l">{{ shown.label }}</span>
+      <span class="v">{{ shown.value }}</span>
+      <span>{{ m.change(shown) }}<span class="was">{{ shown.was }}</span></span>
+    </div>
+  {% endfor %}
+    <div><span class="l">Not yet handled</span>
+      <span class="v">{{ section.unhandled | count }}</span>
+      <span class="was">all reports so far, not only these</span>
+    </div>
+  </div>
+</section>
+{% set total = section.reports | length %}
+<section class="card wide reports">
+  <header><h3>Reports<span class="sub">{{ total }} report{{ "" if total == 1 else "s" }}</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  {% if section.reports %}
+  <div class="notes">
+  {% for entry in section.reports %}
+    <article class="note review report">
+      <div class="rhead">
+        <span class="tag {{ entry.kind.name | lower }}">{{ entry.kind.value }}</span>
+        {% if entry.rating %}<span class="stars" role="img" aria-label="{{ entry.rating }} out of 5 stars">{{ "★" * entry.rating }}{{ "☆" * (5 - entry.rating) }}</span>{% endif %}
+        <span class="sub">{{ entry.at.day }} {{ entry.at.strftime("%b %Y") }}</span>
+        <span class="tag">App {{ entry.app_version }}</span>
+        {% if entry.android_version %}<span class="tag">Android {{ entry.android_version }}</span>{% endif %}
+      </div>
+      {% if entry.liked %}<p class="likes"><span class="sub">Liked</span>{% for item in entry.liked %}<span class="tag">{{ item }}</span>{% endfor %}</p>{% endif %}
+      {% if entry.message %}<p class="rtext">{{ entry.message }}</p>{% endif %}
+      {% if entry.error %}<p class="cause">{{ entry.error }}</p>{% endif %}
+      {% if entry.email %}<p class="private">Email: {{ entry.email }}</p>{% endif %}
+      {% if entry.app_id %}<p class="private">App ID: {{ entry.app_id }}</p>{% endif %}
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No reports in this range.</p>
+  {% endif %}
+</section>

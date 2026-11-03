@@ -236,6 +236,48 @@ class Crashlytics:
     issues: tuple[Issue, ...]
 
 
+class ReportKind(Enum):
+    BUG = "Bug"
+    FEEDBACK = "Feedback"
+
+
+@dataclass(frozen=True)
+class UserReport:
+    """One report a user sent from the app. `at` is UTC.
+
+    A bug carries `android_version`, `error`, and the reporter's `email` and `app_id`, which
+    the printed PDF leaves out; feedback carries `rating` and `liked`. Anything the user left
+    out is None, and an empty `message` is allowed.
+    """
+
+    kind: ReportKind
+    at: datetime
+    app_version: str
+    message: str
+    android_version: str | None
+    error: str | None
+    email: str | None
+    app_id: str | None
+    rating: int | None
+    liked: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Feedback:
+    """Every report created in the range, newest first, and what is still unhandled.
+
+    `bugs` and `suggestions` count the range's reports of each kind and `new` counts both;
+    `unhandled` is the count of reports not yet marked handled, whenever they were made.
+    """
+
+    coverage: Coverage
+    new: Metric
+    bugs: Metric
+    suggestions: Metric
+    unhandled: int
+    reports: tuple[UserReport, ...]
+
+
 @dataclass(frozen=True)
 class AppReport:
     """One app's sections. Every field after `app` is a section or the Failure that replaced it."""
@@ -246,6 +288,7 @@ class AppReport:
     reviews: Reviews | Unavailable | Failure
     vitals: Vitals | Unavailable | Failure
     crashlytics: Crashlytics | Unavailable | Failure
+    feedback: Feedback | Unavailable | Failure
 
     def failures(self) -> list[Failure]:
         sections = (getattr(self, f.name) for f in fields(self) if f.name != "app")

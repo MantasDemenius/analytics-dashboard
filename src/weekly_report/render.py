@@ -307,6 +307,15 @@ CRASH_FREE_USERS = Headline(
     comparable=has_both,
     note=lambda crashlytics: "Users without fatal crashes, UTC days",
 )
+NEW_FEEDBACK = Headline(
+    "New feedback", "feedback", lambda feedback: feedback.new, Better.NEITHER, TEAL
+)
+BUG_REPORTS = Headline(
+    "Bug reports", "feedback", lambda feedback: feedback.bugs, Better.DOWN, ORANGE
+)
+FEEDBACK_MESSAGES = Headline(
+    "Feedback", "feedback", lambda feedback: feedback.suggestions, Better.NEITHER, TEAL
+)
 CARDS = (
     NEW_INSTALLS,
     UNINSTALLS,
@@ -316,13 +325,15 @@ CARDS = (
     PLAY_CRASH_RATE,
     CRASH_FREE_USERS,
 )
-GLANCE = (NET_GROWTH, STORE_RATING, PLAY_CRASH_RATE, CRASH_FREE_USERS)
+GLANCE = (NET_GROWTH, STORE_RATING, PLAY_CRASH_RATE, CRASH_FREE_USERS, NEW_FEEDBACK)
 RATINGS_FIGURES = (NEW_RATINGS_AVERAGE, NEW_RATINGS)
+FEEDBACK_FIGURES = (BUG_REPORTS, FEEDBACK_MESSAGES)
 SECTIONS = (
     Section("growth", "Play: growth", "growth.html.j2"),
     Section("reviews", "Play: ratings and reviews", "reviews.html.j2"),
     Section("vitals", "Play: vitals", "vitals.html.j2"),
     Section("crashlytics", "Crashlytics: issues", "crashlytics.html.j2"),
+    Section("feedback", "User feedback", "feedback.html.j2"),
 )
 VITAL_BARS = (
     ("Crash rate", PLAY_CRASH_RATE, CRASH_THRESHOLD),
@@ -563,6 +574,7 @@ def render(
         "trend_lines": trend_lines,
         "star_bars": star_bars,
         "ratings_figures": RATINGS_FIGURES,
+        "feedback_figures": FEEDBACK_FIGURES,
         "figures": figures,
         "vitals_bars": bars,
     }

@@ -1,7 +1,7 @@
 import json
 import re
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from weekly_report import render as renderer
 from weekly_report.model import (
@@ -9,6 +9,7 @@ from weekly_report.model import (
     Crashlytics,
     ErrorKind,
     Failure,
+    Feedback,
     Growth,
     Issue,
     IssueState,
@@ -17,10 +18,12 @@ from weekly_report.model import (
     Metric,
     Point,
     Report,
+    ReportKind,
     Review,
     Reviews,
     Signal,
     Unavailable,
+    UserReport,
     Vitals,
 )
 from weekly_report.periods import Coverage, Period
@@ -158,6 +161,62 @@ def crashlytics(free=97.5, before=96.0, issues=(), coverage=None):
     )
 
 
+FEEDBACK_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
+
+
+def user_report(
+    message="The list is empty after an import",
+    kind=ReportKind.BUG,
+    at=datetime(2026, 10, 28, 9, 15, tzinfo=UTC),
+    app_version="2.4.0",
+    android_version=None,
+    error=None,
+    email=None,
+    app_id=None,
+    rating=None,
+    liked=(),
+):
+    return UserReport(
+        kind,
+        at,
+        app_version,
+        message,
+        android_version,
+        error,
+        email,
+        app_id,
+        rating,
+        tuple(liked),
+    )
+
+
+def suggestion(message="Nice app", rating=4, liked=(), **kwargs):
+    return user_report(
+        message, ReportKind.FEEDBACK, rating=rating, liked=liked, **kwargs
+    )
+
+
+def feedback(
+    new=5,
+    new_before=3,
+    bugs=2,
+    bugs_before=1,
+    suggestions=3,
+    suggestions_before=2,
+    unhandled=4,
+    reports=(),
+    coverage=None,
+):
+    return Feedback(
+        coverage=coverage or Coverage(FEEDBACK_WEEK),
+        new=Metric(new, new_before),
+        bugs=Metric(bugs, bugs_before),
+        suggestions=Metric(suggestions, suggestions_before),
+        unhandled=unhandled,
+        reports=tuple(reports),
+    )
+
+
 def app(
     name,
     growth_section=None,
@@ -165,6 +224,7 @@ def app(
     reviews_section=None,
     vitals_section=None,
     crashlytics_section=None,
+    feedback_section=None,
 ):
     return AppReport(
         name,
@@ -173,6 +233,7 @@ def app(
         reviews() if reviews_section is None else reviews_section,
         vitals() if vitals_section is None else vitals_section,
         crashlytics() if crashlytics_section is None else crashlytics_section,
+        feedback() if feedback_section is None else feedback_section,
     )
 
 
@@ -683,7 +744,7 @@ class StoreRatingCardTest(unittest.TestCase):
     def test_the_email_line_says_the_rating_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-3], "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better"
+            lines[-4], "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better"
         )
 
 
@@ -734,7 +795,7 @@ class CrashRateCardTest(unittest.TestCase):
     def test_the_email_line_says_the_rate_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-2],
+            lines[-3],
             "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
         )
 
@@ -884,15 +945,15 @@ class CrashFreeCardTest(unittest.TestCase):
     def test_the_email_line_says_the_percent_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-1],
+            lines[-2],
             "  Crash free users, 26 Oct to 1 Nov 2026: 97.50%, +1.50 pts, better",
         )
 
-    def test_the_at_a_glance_table_ends_with_crash_free_users(self):
+    def test_the_at_a_glance_table_has_crash_free_users_before_new_feedback(self):
         glance = part(renderer.render(report(app("first"))), '<section class="glance"')
         self.assertEqual(
-            re.findall(r"<th>(.*?)</th>", glance)[-2:],
-            ["Play crash rate", "Crash free users"],
+            re.findall(r"<th>(.*?)</th>", glance)[-3:],
+            ["Play crash rate", "Crash free users", "New feedback"],
         )
 
 
@@ -1181,7 +1242,7 @@ class ReviewsSectionTest(unittest.TestCase):
 
 
 class DefaultGlanceTest(unittest.TestCase):
-    def test_is_net_growth_the_store_rating_and_both_crash_measures(self):
+    def test_is_net_growth_the_store_rating_both_crash_measures_and_new_feedback(self):
         html = renderer.render(report(app("first", growth(value=69, previous=52))))
         glance = part(html, '<section class="glance"')
         self.assertEqual(
@@ -1192,6 +1253,7 @@ class DefaultGlanceTest(unittest.TestCase):
                 "Store rating",
                 "Play crash rate",
                 "Crash free users",
+                "New feedback",
             ],
         )
         self.assertIn(">+49<", glance)
@@ -1199,7 +1261,9 @@ class DefaultGlanceTest(unittest.TestCase):
         self.assertIn(">0.42%<", glance)
         self.assertIn(">97.50%<", glance)
 
-    def test_the_email_body_lines_are_net_growth_rating_and_both_crash_measures(self):
+    def test_the_email_body_lines_are_net_growth_rating_both_crash_measures_and_new_feedback(
+        self,
+    ):
         lines = renderer.summary(report(app("first", growth(value=69, previous=52))))
         self.assertEqual(
             lines[2:],
@@ -1209,6 +1273,7 @@ class DefaultGlanceTest(unittest.TestCase):
                 "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better",
                 "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
                 "  Crash free users, 26 Oct to 1 Nov 2026: 97.50%, +1.50 pts, better",
+                "  New feedback, 26 Oct to 1 Nov 2026: 5, +2 (+66.7%)",
             ],
         )
 
@@ -1216,8 +1281,269 @@ class DefaultGlanceTest(unittest.TestCase):
         failure = Failure("Play report bucket", "403 Forbidden")
         lines = renderer.summary(report(app("first", listing_section=failure)))
         self.assertIn("  first, Play report bucket: 403 Forbidden", lines)
-        self.assertEqual(lines[-4][:12], "  Net growth")
-        self.assertNotIn("see Problems", "".join(lines[-4:]))
+        self.assertEqual(lines[-5][:12], "  Net growth")
+        self.assertNotIn("see Problems", "".join(lines[-5:]))
+
+
+class FeedbackSectionTest(unittest.TestCase):
+    def html(self, **kwargs):
+        return renderer.render(
+            report(app("first", feedback_section=feedback(**kwargs)))
+        )
+
+    def section(self, **kwargs):
+        return part(self.html(**kwargs), 'id="app-0-feedback"', "</section>\n</div>")
+
+    def cards(self, *reports, **kwargs):
+        return self.section(reports=reports, **kwargs).split("<article")[1:]
+
+    def test_has_a_nav_link_and_names_its_range(self):
+        section = self.section()
+        self.assertIn("26 Oct to 1 Nov 2026", section)
+        self.assertIn('<a href="#app-0-feedback">User feedback</a>', self.html())
+
+    def test_counts_the_reports(self):
+        one = self.section(reports=[user_report()])
+        two = self.section(reports=[user_report(), suggestion()])
+        self.assertIn("1 report<", one)
+        self.assertIn("2 reports<", two)
+
+    def test_shows_bug_reports_and_feedback_with_their_changes(self):
+        section = self.section(
+            bugs=2, bugs_before=1, suggestions=3, suggestions_before=5
+        )
+        self.assertIn("Bug reports", section)
+        self.assertIn(">2<", section)
+        self.assertIn("1 the week before", section)
+        self.assertIn(">3<", section)
+        self.assertIn("5 the week before", section)
+
+    def test_more_bug_reports_is_worse(self):
+        section = self.section(bugs=3, bugs_before=1)
+        self.assertIn(
+            '<span class="d worse"><span class="arr">▲</span>+2 (+200.0%)', section
+        )
+
+    def test_fewer_bug_reports_is_better(self):
+        section = self.section(bugs=0, bugs_before=4)
+        self.assertIn(
+            '<span class="d better"><span class="arr">▼</span>−4 (−100.0%)', section
+        )
+
+    def test_more_feedback_is_neither_better_nor_worse(self):
+        section = self.section(
+            bugs=1, bugs_before=1, suggestions=4, suggestions_before=2
+        )
+        self.assertIn(
+            '<span class="d neutral"><span class="arr">▲</span>+2 (+100.0%)', section
+        )
+
+    def test_shows_how_many_reports_are_not_yet_handled(self):
+        section = self.section(unhandled=7)
+        self.assertIn("Not yet handled", section)
+        self.assertIn(">7<", section)
+
+    def test_nothing_unhandled_says_zero(self):
+        self.assertIn(">0<", self.section(unhandled=0))
+
+    def test_a_bug_card_shows_its_kind_date_versions_message_and_error(self):
+        [card] = self.cards(
+            user_report(
+                message="The list is empty",
+                app_version="2.4.0",
+                android_version="14",
+                error="FormatException: end of input",
+                at=datetime(2026, 10, 28, 9, 15, tzinfo=UTC),
+            )
+        )
+        self.assertIn('<span class="tag bug">Bug</span>', card)
+        self.assertIn("28 Oct 2026", card)
+        self.assertIn("App 2.4.0", card)
+        self.assertIn("Android 14", card)
+        self.assertIn("The list is empty", card)
+        self.assertIn("FormatException: end of input", card)
+        self.assertNotIn('class="stars"', card)
+
+    def test_a_feedback_card_shows_its_kind_stars_liked_items_and_message(self):
+        [card] = self.cards(
+            suggestion("Please add search", rating=4, liked=["speed", "design"])
+        )
+        self.assertIn('<span class="tag feedback">Feedback</span>', card)
+        self.assertIn('aria-label="4 out of 5 stars"', card)
+        self.assertIn("★★★★☆", card)
+        self.assertIn("Liked", card)
+        self.assertIn('<span class="tag">speed</span>', card)
+        self.assertIn('<span class="tag">design</span>', card)
+        self.assertIn("Please add search", card)
+        self.assertNotIn("Android", card)
+
+    def test_a_card_shows_the_app_version_it_came_from(self):
+        [card] = self.cards(suggestion(app_version="2.5.0-beta"))
+        self.assertIn("App 2.5.0-beta", card)
+
+    def test_a_bug_without_android_version_or_error_shows_neither(self):
+        [card] = self.cards(user_report())
+        self.assertNotIn("Android", card)
+        self.assertNotIn("cause", card)
+
+    def test_feedback_with_no_message_and_nothing_liked_shows_only_its_stars(self):
+        [card] = self.cards(suggestion("", rating=5, liked=[]))
+        self.assertIn("★★★★★", card)
+        self.assertNotIn("rtext", card)
+        self.assertNotIn("Liked", card)
+
+    def test_a_bug_with_no_message_still_shows_its_error(self):
+        [card] = self.cards(user_report("", error="Import failed"))
+        self.assertNotIn("rtext", card)
+        self.assertIn("Import failed", card)
+
+    def test_a_bug_with_no_email_or_app_id_shows_neither(self):
+        [card] = self.cards(user_report())
+        self.assertNotIn("private", card)
+        self.assertNotIn("Email", card)
+        self.assertNotIn("App ID", card)
+
+    def test_a_bug_with_only_an_email_shows_only_that(self):
+        [card] = self.cards(user_report(email="someone@example.com"))
+        self.assertIn("someone@example.com", card)
+        self.assertNotIn("App ID", card)
+
+    def test_lists_every_report_in_the_order_given(self):
+        reports = [user_report(f"report-{number}") for number in range(40)]
+        cards = self.cards(*reports)
+        self.assertEqual(len(cards), 40)
+        self.assertIn("report-0<", cards[0])
+        self.assertIn("report-39<", cards[39])
+
+    def test_no_reports_says_so(self):
+        section = self.section()
+        self.assertIn("No reports in this range.", section)
+        self.assertNotIn("<article", section)
+
+    def test_report_text_is_escaped(self):
+        [card] = self.cards(
+            user_report(
+                "<script>alert(1)</script>",
+                error="a & b",
+                email="<i>x</i>@example.com",
+                app_id="<b>id</b>",
+            )
+        )
+        self.assertNotIn("<script>alert(1)</script>", card)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", card)
+        self.assertIn("a &amp; b", card)
+        self.assertIn("&lt;i&gt;x&lt;/i&gt;@example.com", card)
+        self.assertIn("&lt;b&gt;id&lt;/b&gt;", card)
+
+    def test_a_message_keeps_its_line_breaks_in_the_markup(self):
+        [card] = self.cards(user_report("first\nsecond"))
+        self.assertIn("first\nsecond", card)
+
+    def test_a_partly_covered_section_says_where_its_data_ends(self):
+        coverage = Coverage(FEEDBACK_WEEK, date(2026, 10, 30))
+        self.assertIn("data to 30 Oct", self.section(coverage=coverage))
+
+    def test_a_failed_source_shows_its_error_in_a_full_width_card(self):
+        failure = Failure("Firestore feedback", "403 Forbidden")
+        html = renderer.render(report(app("first", feedback_section=failure)))
+        section = part(html, 'id="app-0-feedback"')
+        self.assertIn('class="card wide"', section)
+        self.assertIn("Firestore feedback: 403 Forbidden", section)
+
+    def test_an_unreachable_range_says_so_and_is_no_problem(self):
+        unavailable = Unavailable("Firestore feedback", FEEDBACK_WEEK)
+        html = renderer.render(report(app("first", feedback_section=unavailable)))
+        self.assertIn("not available for this range", part(html, 'id="app-0-feedback"'))
+        self.assertNotIn('class="problems"', html)
+
+
+class NewFeedbackGlanceTest(unittest.TestCase):
+    def test_is_the_count_of_new_reports_of_both_kinds_with_its_change(self):
+        html = renderer.render(
+            report(app("first", feedback_section=feedback(new=5, new_before=3)))
+        )
+        row = part(html, "<tbody>", "</tbody>")
+        self.assertIn(">5<", row)
+        self.assertIn("+2 (+66.7%)", row)
+
+    def test_more_reports_are_neither_better_nor_worse(self):
+        row = part(
+            renderer.render(
+                report(app("first", feedback_section=feedback(new=9, new_before=3)))
+            ),
+            "<tbody>",
+            "</tbody>",
+        )
+        self.assertIn('<span class="d neutral"><span class="arr">▲</span>+6', row)
+
+    def test_the_email_line_says_the_count_and_its_change(self):
+        lines = renderer.summary(report(app("first")))
+        self.assertEqual(
+            lines[-1], "  New feedback, 26 Oct to 1 Nov 2026: 5, +2 (+66.7%)"
+        )
+
+    def test_the_email_line_carries_no_report_text(self):
+        reports = [
+            user_report("secret words", email="someone@example.com", app_id="id-1")
+        ]
+        page = report(app("first", feedback_section=feedback(reports=reports)))
+        text = "\n".join(renderer.summary(page))
+        for private in ("secret words", "someone@example.com", "id-1"):
+            self.assertNotIn(private, text)
+
+    def test_a_failed_source_says_so_in_the_email(self):
+        failure = Failure("Firestore feedback", "403 Forbidden")
+        lines = renderer.summary(report(app("first", feedback_section=failure)))
+        self.assertEqual(
+            lines[-1], "  New feedback: Firestore feedback failed, see Problems"
+        )
+
+
+class PdfRedactionTest(unittest.TestCase):
+    EMAIL = "someone@example.com"
+    APP_ID = "made-up-installation-id"
+
+    def html(self):
+        reports = [
+            user_report(
+                "It crashed",
+                android_version="14",
+                email=self.EMAIL,
+                app_id=self.APP_ID,
+            ),
+            suggestion("Nice"),
+        ]
+        return renderer.render(
+            report(app("first", feedback_section=feedback(reports=reports)))
+        )
+
+    @staticmethod
+    def printed(html):
+        return re.sub(r'<p class="private">.*?</p>', "", html, flags=re.DOTALL)
+
+    def test_the_local_html_shows_the_email_and_the_app_id(self):
+        html = self.html()
+        self.assertIn(self.EMAIL, html)
+        self.assertIn(self.APP_ID, html)
+
+    def test_only_private_elements_hold_them(self):
+        remainder = self.printed(self.html())
+        self.assertNotIn(self.EMAIL, remainder)
+        self.assertNotIn(self.APP_ID, remainder)
+
+    def test_private_elements_are_hidden_when_printing_and_only_then(self):
+        html = self.html()
+        rule = ".private { display: none; }"
+        self.assertIn(rule, html[html.index("@media print") :])
+        self.assertNotIn(rule, html[: html.index("@media print")])
+
+    def test_the_message_stays_in_the_pdf(self):
+        self.assertIn("It crashed", self.printed(self.html()))
+
+    def test_the_email_and_app_id_are_not_in_a_chart_or_an_attribute(self):
+        html = self.html()
+        for hidden in (self.EMAIL, self.APP_ID):
+            self.assertEqual(html.count(hidden), 1)
 
 
 class PageTest(unittest.TestCase):

@@ -5,6 +5,7 @@ from weekly_report.model import (
     AppReport,
     Crashlytics,
     Failure,
+    Feedback,
     Growth,
     Label,
     Listing,
@@ -222,6 +223,7 @@ class ReportProblemsTest(unittest.TestCase):
         reviews=None,
         vitals=None,
         crashlytics=None,
+        feedback=None,
     ):
         metric = Metric(value=1, previous=1)
         return AppReport(
@@ -231,6 +233,7 @@ class ReportProblemsTest(unittest.TestCase):
             reviews or Reviews(Coverage(WEEK), metric, metric, metric, {}, ()),
             vitals or Vitals(Coverage(WEEK), metric, metric),
             crashlytics or Crashlytics(Coverage(WEEK), metric, ()),
+            feedback or Feedback(Coverage(WEEK), metric, metric, metric, 0, ()),
         )
 
     def test_no_failures_means_no_problems(self):
@@ -265,6 +268,11 @@ class ReportProblemsTest(unittest.TestCase):
         report = Report(period=WEEK, apps=(self.app(crashlytics=failure),))
         self.assertEqual(report.problems, [("first", failure)])
 
+    def test_a_failing_feedback_section_is_a_problem(self):
+        failure = Failure(source="Firestore feedback", error="403 Forbidden")
+        report = Report(period=WEEK, apps=(self.app(feedback=failure),))
+        self.assertEqual(report.problems, [("first", failure)])
+
     def test_a_section_the_range_does_not_reach_is_not_a_problem(self):
         unavailable = Unavailable("Play report bucket", WEEK)
         report = Report(
@@ -276,6 +284,7 @@ class ReportProblemsTest(unittest.TestCase):
                     reviews=unavailable,
                     vitals=unavailable,
                     crashlytics=unavailable,
+                    feedback=unavailable,
                 ),
             ),
         )
