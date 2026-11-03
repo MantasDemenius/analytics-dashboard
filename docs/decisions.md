@@ -176,6 +176,31 @@ Built in `sources/play_reviews.py` (2026-11-03):
   a range with no such day covered at all is "not available for this range". The API is not asked
   when the range ended before its window.
 
+## Play vitals source
+
+Built in `sources/play_vitals.py` (2026-11-03), from the Play Developer Reporting API
+(`playdeveloperreporting` `v1beta1`, scope `playdeveloperreporting`, read by the app's service
+account like the other Play sources) and checked against its discovery document and a real call:
+
+- **Two metric sets, one query each:** `crashRateMetricSet` and `anrRateMetricSet`, asking for
+  `userPerceivedCrashRate28dUserWeighted` and `userPerceivedAnrRate28dUserWeighted` with DAILY
+  aggregation and a `timelineSpec` in `America/Los_Angeles`, from the first day of the 12 period
+  trend to the last covered day (`endTime` is exclusive). About 90 rows, one page.
+- **A rolling metric alone returns no rows.** A real call for only the 28 day metric came back
+  empty, and the same call with the plain daily metric beside it (`userPerceivedCrashRate`)
+  returned every day, so the query always asks for both and reads only the 28 day one.
+- **Freshness comes from a `get` on each metric set:** `freshnessInfo` lists the newest end per
+  aggregation period, exclusive and in Pacific Time. The real value had a time of day (23:00 on
+  the day it named), so the last data day is always the date it names minus one, whatever the time.
+  The older of the two sets decides the period, so both bars always share one.
+- **The value** is the rate on the period's last covered day; a day with no row carries the
+  newest row before it. A range where no rows come back is "not available for this range".
+- **Bad behaviour:** Play's page says "at least 1.09%" and "at least 0.47%" of daily active users,
+  so a rate equal to the threshold counts as over it.
+- **Unverified:** the API documents these values as percentages, and the code reads "1.09" as
+  1.09%. The first app has no crashes yet, so every value seen so far was 0. Check the unit the
+  first time a real value is above zero.
+
 ## Play report bucket
 
 Mapped on 2026-10-31 by reading the first app's bucket with its report service account (holding

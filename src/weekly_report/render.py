@@ -15,7 +15,17 @@ from typing import Any
 
 from jinja2 import Environment, PackageLoader, StrictUndefined, select_autoescape
 
-from weekly_report.model import AppReport, Failure, Metric, Point, Report, Unavailable
+from weekly_report.model import (
+    ANR_THRESHOLD,
+    CRASH_THRESHOLD,
+    AppReport,
+    Failure,
+    Metric,
+    Point,
+    Report,
+    Unavailable,
+    Vitals,
+)
 from weekly_report.periods import TREND_PERIODS
 
 MINUS = "−"
@@ -78,6 +88,16 @@ def points_change(metric: Metric) -> str:
     if metric.change == 0:
         return "no change"
     return signed(metric.change, 1, " pts")
+
+
+def rate(number: float) -> str:
+    return f"{number:.2f}%"
+
+
+def rate_change(metric: Metric) -> str:
+    if metric.change == 0:
+        return "no change"
+    return signed(metric.change, 2, " pts")
 
 
 def rating(number: float) -> str:
@@ -244,13 +264,84 @@ NEW_RATINGS_AVERAGE = Headline(
 NEW_RATINGS = Headline(
     "New ratings", "reviews", lambda reviews: reviews.new_ratings, Better.UP, GOLD
 )
-CARDS = (NEW_INSTALLS, UNINSTALLS, NET_GROWTH, LISTING_CONVERSION, STORE_RATING)
-GLANCE = (NET_GROWTH, STORE_RATING)
+PLAY_CRASH_RATE = Headline(
+    "Play crash rate",
+    "vitals",
+    lambda vitals: vitals.crash_rate,
+    Better.DOWN,
+    ORANGE,
+    shown=rate,
+    change=rate_change,
+    note=lambda vitals: (
+        f"User-perceived, 28 days, as of {short_day(vitals.coverage.covered.end)}"
+    ),
+)
+ANR_RATE = Headline(
+    "ANR rate",
+    "vitals",
+    lambda vitals: vitals.anr_rate,
+    Better.DOWN,
+    ORANGE,
+    shown=rate,
+    change=rate_change,
+)
+CARDS = (
+    NEW_INSTALLS,
+    UNINSTALLS,
+    NET_GROWTH,
+    LISTING_CONVERSION,
+    STORE_RATING,
+    PLAY_CRASH_RATE,
+)
+GLANCE = (NET_GROWTH, STORE_RATING, PLAY_CRASH_RATE)
 RATINGS_FIGURES = (NEW_RATINGS_AVERAGE, NEW_RATINGS)
 SECTIONS = (
     Section("growth", "Play: growth", "growth.html.j2"),
     Section("reviews", "Play: ratings and reviews", "reviews.html.j2"),
+    Section("vitals", "Play: vitals", "vitals.html.j2"),
 )
+VITAL_BARS = (
+    ("Crash rate", PLAY_CRASH_RATE, CRASH_THRESHOLD),
+    ("ANR rate", ANR_RATE, ANR_THRESHOLD),
+)
+SCALE_PAST_THRESHOLD = 1.5
+SCALE_PAST_VALUE = 1.1
+
+
+@dataclass(frozen=True)
+class Bar:
+    """One vital against Play's bad behaviour threshold; `fill`, `tick` and `limit` are
+    percents of the bar's width, on a scale that always holds the value and the threshold."""
+
+    label: str
+    shown: Figure
+    threshold: str
+    over: bool
+    fill: float
+    tick: float
+    limit: float
+
+
+def bar(label: str, headline: Headline, vitals: Vitals, threshold: float) -> Bar:
+    """Play counts a rate of at least the threshold as bad behaviour."""
+    metric = headline.metric(vitals)
+    scale = max(
+        threshold * SCALE_PAST_THRESHOLD,
+        max(metric.value, metric.previous) * SCALE_PAST_VALUE,
+    )
+    return Bar(
+        label,
+        figure(headline, vitals),
+        rate(threshold),
+        metric.value >= threshold,
+        fill=round(metric.value / scale * 100, 1),
+        tick=round(metric.previous / scale * 100, 1),
+        limit=round(threshold / scale * 100, 1),
+    )
+
+
+def bars(vitals: Vitals) -> list[Bar]:
+    return [bar(label, each, vitals, limit) for label, each, limit in VITAL_BARS]
 
 
 def initials(name: str) -> str:
@@ -449,6 +540,7 @@ def render(
         "star_bars": star_bars,
         "ratings_figures": RATINGS_FIGURES,
         "figures": figures,
+        "vitals_bars": bars,
     }
     template = environment.get_template("report.html.j2")
     return template.render(

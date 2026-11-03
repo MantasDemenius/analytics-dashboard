@@ -4,6 +4,8 @@ Every section ticket adds its section here, so the layout can be checked by eye 
 data. Covers a rise, a fall and no change, a section with data ending inside its range, a failed
 source and a range a source cannot reach. The reviews cover every label, a translation, a review
 only the report holds, a reply, a run too late for part of the range and a week with no ratings.
+The vitals cover rates under Play's bad behaviour thresholds, a crash rate above its threshold,
+both rates above theirs with data ending inside the range, and a rate with no change.
 
 Run: uv run python scripts/render_sample.py
 """
@@ -24,6 +26,7 @@ from weekly_report.model import (
     Review,
     Reviews,
     Unavailable,
+    Vitals,
 )
 from weekly_report.periods import TREND_PERIODS, Coverage, Period
 from weekly_report.render import render, write
@@ -32,6 +35,7 @@ OUT_DIR = Path("out/sample")
 REPORT_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
 BUCKET_WEEK = REPORT_WEEK.previous()
 LISTING_WEEK = BUCKET_WEEK.previous()
+VITALS_WEEK = BUCKET_WEEK
 
 
 def swinging(
@@ -76,6 +80,31 @@ def listing(
         visitors=visited,
         acquisitions=acquired,
         conversion=Metric.ratio(acquired, visited),
+    )
+
+
+def vital(now: float, before: float, coverage: Coverage) -> Metric:
+    """A made-up rate that swings through the weeks before and sits at `now` after them."""
+    last_week = VITALS_WEEK.previous().end
+
+    def level(day: date) -> float:
+        if day > last_week:
+            return now
+        return before * (1 + 0.18 * math.sin((last_week - day).days / 9))
+
+    return Metric.level(level, coverage)
+
+
+def vitals_section(
+    crash: tuple[float, float],
+    anr: tuple[float, float],
+    data_to: date | None = None,
+) -> Vitals:
+    coverage = Coverage(VITALS_WEEK, data_to)
+    return Vitals(
+        coverage,
+        crash_rate=vital(*crash, coverage),
+        anr_rate=vital(*anr, coverage),
     )
 
 
@@ -200,6 +229,7 @@ def sample() -> Report:
                     EXAMPLE_REVIEWS,
                     {5: 14, 4: 9, 3: 5, 2: 2, 1: 3},
                 ),
+                vitals_section(crash=(0.42, 0.35), anr=(0.21, 0.24)),
             ),
             AppReport(
                 "Second App",
@@ -216,24 +246,30 @@ def sample() -> Report:
                     {5: 1, 4: 2, 3: 3, 2: 4, 1: 4},
                     uncovered=(Period(date(2026, 10, 26), date(2026, 10, 27)),),
                 ),
+                vitals_section(
+                    crash=(1.31, 0.98), anr=(0.52, 0.44), data_to=date(2026, 10, 22)
+                ),
             ),
             AppReport(
                 "Third App",
                 growth(flat_week(), swinging(BUCKET_WEEK, 20, 0.02, 20)),
                 listing(listing_visitors(380), rate=0.2),
                 reviews_section({}, 0),
+                vitals_section(crash=(1.09, 1.4), anr=(0.3, 0.3)),
             ),
             AppReport(
                 "Fourth App",
                 Failure("Play report bucket", "403 Forbidden"),
                 Failure("Play report bucket", "403 Forbidden"),
                 Failure("Play reviews", "403 Forbidden"),
+                Failure("Play vitals", "403 Forbidden"),
             ),
             AppReport(
                 "Fifth App",
                 Unavailable("Play report bucket", BUCKET_WEEK),
                 Unavailable("Play report bucket", LISTING_WEEK),
                 Unavailable("Play reviews", REPORT_WEEK),
+                Unavailable("Play vitals", VITALS_WEEK),
             ),
         ),
     )

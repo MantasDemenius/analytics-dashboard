@@ -167,6 +167,22 @@ class Reviews:
     uncovered: tuple[Period, ...] = ()
 
 
+CRASH_THRESHOLD = 1.09
+ANR_THRESHOLD = 0.47
+
+
+@dataclass(frozen=True)
+class Vitals:
+    """User-perceived crash and ANR rate as 28 day user weighted percents, each a level.
+
+    Play's bad behaviour thresholds for them are `CRASH_THRESHOLD` and `ANR_THRESHOLD`.
+    """
+
+    coverage: Coverage
+    crash_rate: Metric
+    anr_rate: Metric
+
+
 @dataclass(frozen=True)
 class AppReport:
     """One app's sections. Every field after `app` is a section or the Failure that replaced it."""
@@ -175,6 +191,7 @@ class AppReport:
     growth: Growth | Unavailable | Failure
     listing: Listing | Unavailable | Failure
     reviews: Reviews | Unavailable | Failure
+    vitals: Vitals | Unavailable | Failure
 
     def failures(self) -> list[Failure]:
         sections = (getattr(self, f.name) for f in fields(self) if f.name != "app")

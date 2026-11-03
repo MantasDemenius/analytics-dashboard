@@ -1,0 +1,25 @@
+{% import "macros.html.j2" as m with context %}
+{% set last = section.coverage.covered.length | before %}
+<section class="card wide">
+  <header><h3>Crash and ANR rate<span class="sub">user-perceived, 28 days</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  <div class="vitals">
+  {% for bar in vitals_bars(section) %}
+    <div class="vital">
+      <div class="vhead">
+        <span class="l">{{ bar.label }}</span>
+        <span class="v">{{ bar.shown.value }}</span>
+        <span>{{ m.change(bar.shown) }}<span class="was">{{ bar.shown.was }}</span></span>
+      </div>
+      <div class="gauge" role="img" aria-label="{{ bar.label }} {{ bar.shown.value }} against the bad behaviour threshold of {{ bar.threshold }}">
+        <div class="fill{{ " over" if bar.over else "" }}" style="width: {{ bar.fill }}%"></div>
+        <span class="tick" style="left: {{ bar.tick }}%"></span>
+        <span class="limit" style="left: {{ bar.limit }}%"></span>
+      </div>
+      <div class="vfoot">
+        <span class="state">{{ "Above" if bar.over else "Below" }} the bad behaviour threshold of {{ bar.threshold }}</span>
+        <span>line: threshold, tick: {{ last }}</span>
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+</section>

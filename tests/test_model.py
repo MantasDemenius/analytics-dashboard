@@ -13,6 +13,7 @@ from weekly_report.model import (
     Review,
     Reviews,
     Unavailable,
+    Vitals,
 )
 from weekly_report.periods import Coverage, Period
 
@@ -212,13 +213,14 @@ class RatioTest(unittest.TestCase):
 
 
 class ReportProblemsTest(unittest.TestCase):
-    def app(self, name="first", growth=None, listing=None, reviews=None):
+    def app(self, name="first", growth=None, listing=None, reviews=None, vitals=None):
         metric = Metric(value=1, previous=1)
         return AppReport(
             name,
             growth or Growth(Coverage(WEEK), metric, metric, metric),
             listing or Listing(Coverage(WEEK), metric, metric, metric),
             reviews or Reviews(Coverage(WEEK), metric, metric, metric, {}, ()),
+            vitals or Vitals(Coverage(WEEK), metric, metric),
         )
 
     def test_no_failures_means_no_problems(self):
@@ -243,12 +245,22 @@ class ReportProblemsTest(unittest.TestCase):
         report = Report(period=WEEK, apps=(self.app(reviews=failure),))
         self.assertEqual(report.problems, [("first", failure)])
 
+    def test_a_failing_vitals_section_is_a_problem(self):
+        failure = Failure(source="Play vitals", error="403 Forbidden")
+        report = Report(period=WEEK, apps=(self.app(vitals=failure),))
+        self.assertEqual(report.problems, [("first", failure)])
+
     def test_a_section_the_range_does_not_reach_is_not_a_problem(self):
         unavailable = Unavailable("Play report bucket", WEEK)
         report = Report(
             period=WEEK,
             apps=(
-                self.app(growth=unavailable, listing=unavailable, reviews=unavailable),
+                self.app(
+                    growth=unavailable,
+                    listing=unavailable,
+                    reviews=unavailable,
+                    vitals=unavailable,
+                ),
             ),
         )
         self.assertEqual(report.problems, [])
