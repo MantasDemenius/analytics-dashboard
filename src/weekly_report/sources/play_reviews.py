@@ -142,12 +142,13 @@ def all_pages(read_page: PageReader) -> list[dict]:
             return found
 
 
-def trailing_average(csv_ratings: list[CsvReview], day: date) -> float:
-    """The average of the ratings of the 28 days ending `day`, or ending on the newest rating before it."""
+def trailing_average(csv_ratings: list[CsvReview], day: date) -> float | None:
+    """The average of the ratings of the 28 days ending `day`, or ending on the newest rating
+    before it; None when no rating came before."""
     known = [(each.submitted.date(), each.stars) for each in csv_ratings]
     known = [(when, stars) for when, stars in known if when <= day]
     if not known:
-        return 0.0
+        return None
     window = timedelta(days=STORE_RATING_DAYS)
     if not any(when > day - window for when, _ in known):
         day = max(when for when, _ in known)

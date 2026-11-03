@@ -21,13 +21,15 @@ class Metric:
     """A number for a range and for the range before cut to the same days.
 
     `series` holds the covered days; `trend` holds the same measure for 12 periods of the
-    range's length, oldest first, each dated by the day its period starts.
+    range's length, oldest first, each dated by the day its period starts. `comparable` is
+    False when `previous` stands for no data at all rather than for a value of zero.
     """
 
     value: float
     previous: float
     series: tuple[Point, ...] = ()
     trend: tuple[Point, ...] = ()
+    comparable: bool = True
 
     @classmethod
     def summed(cls, daily: dict[date, float], coverage: Coverage) -> Metric:
@@ -49,21 +51,29 @@ class Metric:
         )
 
     @classmethod
-    def level(cls, level_on: Callable[[date], float], coverage: Coverage) -> Metric:
-        """The level on the last covered day, one period earlier, and at each period's end."""
+    def level(
+        cls, level_on: Callable[[date], float | None], coverage: Coverage
+    ) -> Metric:
+        """The level on the last covered day, one period earlier, and at each period's end.
+
+        `level_on` gives None for a day it has no data for, which reads as zero but, for the
+        period before the range, leaves the metric not comparable.
+        """
         period = coverage.period
         days = coverage.covered.length
 
-        def at_end(of: Period) -> float:
+        def at_end(of: Period) -> float | None:
             return level_on(of.cut(days).end)
 
+        before = at_end(period.previous())
         return cls(
-            value=at_end(period),
-            previous=at_end(period.previous()),
+            value=at_end(period) or 0.0,
+            previous=before or 0.0,
             trend=tuple(
-                Point(each.start, at_end(each))
+                Point(each.start, at_end(each) or 0.0)
                 for each in period.trailing(TREND_PERIODS)
             ),
+            comparable=before is not None,
         )
 
     @classmethod

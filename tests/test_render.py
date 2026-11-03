@@ -30,8 +30,13 @@ from weekly_report.model import (
 )
 from weekly_report.periods import Coverage, Period
 from weekly_report.render import (
+    ANR_RATE,
+    CRASH_FREE_USERS,
+    LISTING_CONVERSION,
     NEW_INSTALLS,
+    PLAY_CRASH_RATE,
     SECTIONS,
+    STORE_RATING,
     Better,
     Figure,
     Headline,
@@ -432,6 +437,100 @@ class FigureTest(unittest.TestCase):
                 failed=False,
             ),
         )
+
+
+class RoundedChangeTest(unittest.TestCase):
+    def assert_flat(self, shown):
+        self.assertEqual(
+            (shown.change, shown.direction, shown.verdict),
+            ("no change", "flat", "neutral"),
+        )
+
+    def test_a_rate_change_that_rounds_to_nothing_is_no_change(self):
+        self.assert_flat(
+            figure(PLAY_CRASH_RATE, vitals(crash=0.352, crash_before=0.35))
+        )
+        self.assert_flat(
+            figure(PLAY_CRASH_RATE, vitals(crash=0.348, crash_before=0.35))
+        )
+
+    def test_a_rate_change_that_rounds_to_a_hundredth_is_a_change(self):
+        shown = figure(PLAY_CRASH_RATE, vitals(crash=0.356, crash_before=0.35))
+        self.assertEqual(
+            (shown.change, shown.direction, shown.verdict), ("+0.01 pts", "up", "worse")
+        )
+
+    def test_a_listing_conversion_change_under_a_tenth_of_a_point_is_no_change(self):
+        self.assert_flat(figure(LISTING_CONVERSION, listing(10.04, 10.0)))
+
+    def test_a_store_rating_change_under_a_hundredth_of_a_star_is_no_change(self):
+        self.assert_flat(figure(STORE_RATING, reviews(store=3.674, previous=3.67)))
+
+    def test_a_crash_free_change_under_a_hundredth_of_a_point_is_no_change(self):
+        self.assert_flat(
+            figure(CRASH_FREE_USERS, crashlytics(free=96.004, before=96.0))
+        )
+
+    def test_an_ad_earnings_change_under_a_hundredth_is_no_change(self):
+        self.assert_flat(
+            figure(renderer.AD_EARNINGS, admob(earnings=10.004, earnings_before=10.0))
+        )
+
+    def test_a_count_change_is_decided_on_whole_numbers(self):
+        self.assert_flat(figure(NEW_INSTALLS, growth(value=52, previous=52)))
+
+    def test_the_email_says_no_change_without_a_verdict(self):
+        page = report(
+            app("first", vitals_section=vitals(crash=0.352, crash_before=0.35))
+        )
+        line = [x for x in summary(page, (PLAY_CRASH_RATE,)) if "Play crash" in x]
+        self.assertEqual(
+            line, ["  Play crash rate, 19 Oct to 25 Oct 2026: 0.35%, no change"]
+        )
+
+
+class UncomparableLevelTest(unittest.TestCase):
+    def new_vitals(self):
+        return Vitals(
+            Coverage(VITALS_WEEK),
+            crash_rate=Metric(0.42, 0.0, trend=weekly_trend(0.42), comparable=False),
+            anr_rate=Metric(0.21, 0.0, trend=weekly_trend(0.21), comparable=False),
+        )
+
+    def test_a_rate_with_no_data_before_is_not_a_change_from_zero(self):
+        shown = figure(PLAY_CRASH_RATE, self.new_vitals())
+        self.assertEqual(
+            (shown.value, shown.change, shown.direction, shown.verdict),
+            ("0.42%", "nothing to compare", "flat", "neutral"),
+        )
+        self.assertEqual(shown.was, "none the week before")
+
+    def test_an_anr_rate_with_no_data_before_is_not_compared_either(self):
+        shown = figure(ANR_RATE, self.new_vitals())
+        self.assertEqual(shown.change, "nothing to compare")
+
+    def test_the_card_and_the_gauge_show_no_tick_for_the_week_before(self):
+        html = renderer.render(report(app("first", vitals_section=self.new_vitals())))
+        gauge = part(html, 'id="app-0-vitals"', 'id="app-0-crashlytics"')
+        self.assertIn("nothing to compare", gauge)
+        self.assertNotIn('class="tick"', gauge)
+
+    def test_a_genuine_zero_rate_before_is_still_a_change(self):
+        shown = figure(PLAY_CRASH_RATE, vitals(crash=0.42, crash_before=0.0))
+        self.assertEqual((shown.change, shown.verdict), ("+0.42 pts", "worse"))
+
+    def test_the_store_rating_with_no_rating_before_is_not_compared(self):
+        section = Reviews(
+            Coverage(REVIEWS_WEEK),
+            store_rating=Metric(3.67, 0.0, comparable=False),
+            new_ratings=Metric(1, 0),
+            new_average=Metric(4.0, 0.0),
+            breakdown={5: 0, 4: 1, 3: 0, 2: 0, 1: 0},
+            reviews=(),
+        )
+        shown = figure(STORE_RATING, section)
+        self.assertEqual(shown.change, "no ratings to compare")
+        self.assertEqual(shown.was, "none the week before")
 
 
 class TopTest(unittest.TestCase):

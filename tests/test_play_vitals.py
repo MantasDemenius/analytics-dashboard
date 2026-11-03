@@ -250,6 +250,25 @@ class VitalsValuesTest(unittest.TestCase):
         self.assertEqual(found.crash_rate.previous, crash[date(2026, 10, 22)])
 
 
+class VitalsComparableTest(unittest.TestCase):
+    def test_a_rate_with_no_row_before_the_window_is_not_compared(self):
+        play = Play.steady(date(2026, 10, 31))
+        for name in play.daily:
+            play.daily[name] = {
+                day: value
+                for day, value in play.daily[name].items()
+                if day >= date(2026, 10, 19)
+            }
+        found = play.vitals()
+        self.assertFalse(found.crash_rate.comparable)
+        self.assertFalse(found.anr_rate.comparable)
+        self.assertEqual(found.crash_rate.previous, 0.0)
+
+    def test_a_rate_with_rows_before_the_window_is_compared(self):
+        found = Play.steady(date(2026, 10, 31)).vitals()
+        self.assertTrue(found.crash_rate.comparable)
+
+
 class VitalsRequestTest(unittest.TestCase):
     def test_each_set_is_queried_once_for_the_trend_days_up_to_the_last_one(self):
         play = Play.steady(date(2026, 10, 31))

@@ -34,6 +34,7 @@ NOT_AVAILABLE = "not available for this range"
 NONE = "none"
 NO_COMPARISON = "no ratings to compare"
 NOTHING_TO_COMPARE = "nothing to compare"
+NO_CHANGE = "no change"
 BLUE = "#2a78d6"
 ORANGE = "#d9622b"
 TEAL = "#1a8f72"
@@ -85,74 +86,32 @@ def short_day(day: date) -> str:
     return f"{day.day} {day:%b}"
 
 
-def change_text(metric: Metric) -> str:
-    if metric.change == 0:
-        return "no change"
-    if metric.percent_change is None:
-        return signed(metric.change)
-    return f"{signed(metric.change)} ({signed(metric.percent_change, 1, '%')})"
-
-
 def percent(number: float) -> str:
     return f"{number:.1f}%"
-
-
-def points_change(metric: Metric) -> str:
-    if metric.change == 0:
-        return "no change"
-    return signed(metric.change, 1, " pts")
 
 
 def rate(number: float) -> str:
     return f"{number:.2f}%"
 
 
-def rate_change(metric: Metric) -> str:
-    if metric.change == 0:
-        return "no change"
-    return signed(metric.change, 2, " pts")
-
-
 def crash_free(number: float) -> str:
     return rate(number) if number else NONE
-
-
-def crash_free_change(metric: Metric) -> str:
-    if not has_both(metric):
-        return NOTHING_TO_COMPARE
-    return rate_change(metric)
 
 
 def rating(number: float) -> str:
     return f"{number:.2f}" if number else NONE
 
 
-def stars_change(metric: Metric) -> str:
-    if not has_both(metric):
-        return NO_COMPARISON
-    if metric.change == 0:
-        return "no change"
-    return signed(metric.change, 2, " stars")
-
-
 def money(number: float) -> str:
     return f"{number:,.2f}"
 
 
-def money_changed(metric: Metric) -> bool:
-    return round(metric.change, 2) != 0
-
-
-def money_change(metric: Metric) -> str:
-    if not money_changed(metric):
-        return "no change"
-    if metric.percent_change is None:
-        return signed(metric.change, 2)
-    return f"{signed(metric.change, 2)} ({signed(metric.percent_change, 1, '%')})"
-
-
 def has_both(metric: Metric) -> bool:
     return metric.value > 0 and metric.previous > 0
+
+
+def is_comparable(metric: Metric) -> bool:
+    return metric.comparable
 
 
 def no_note(section: Any) -> str:
@@ -161,6 +120,29 @@ def no_note(section: Any) -> str:
 
 def currency_of(admob: AdMob) -> str:
     return f" {admob.currency}"
+
+
+@dataclass(frozen=True)
+class Change:
+    """How a change is written: rounded to `digits` with `unit` after it, and with its percent
+    when `percent` is set. A change that rounds to zero is "no change", whatever its size
+    before rounding. `unknown` is what stands in when the two values cannot be compared."""
+
+    digits: int = 0
+    unit: str = ""
+    percent: bool = False
+    unknown: str = NOTHING_TO_COMPARE
+
+    def rounded(self, metric: Metric) -> float:
+        return round(metric.change, self.digits)
+
+    def text(self, metric: Metric) -> str:
+        if self.rounded(metric) == 0:
+            return NO_CHANGE
+        change = signed(metric.change, self.digits, self.unit)
+        if not self.percent or metric.percent_change is None:
+            return change
+        return f"{change} ({signed(metric.percent_change, 1, '%')})"
 
 
 class Better(Enum):
@@ -174,8 +156,8 @@ class Headline:
     """A number one section shows as a number card or an at a glance column.
 
     `section` names the AppReport field holding the section, whose `coverage` gives the range;
-    `metric` picks the number from it, and `shown` and `change` format it; `unit` is appended
-    to every value `shown` formats.
+    `metric` picks the number from it, `shown` formats a value and `change` the change; `unit`
+    is appended to every value `shown` formats.
     """
 
     label: str
@@ -184,8 +166,8 @@ class Headline:
     better: Better
     colour: str = BLUE
     shown: Callable[[float], str] = count
-    change: Callable[[Metric], str] = change_text
-    comparable: Callable[[Metric], bool] = lambda metric: True
+    change: Change = Change(percent=True)
+    comparable: Callable[[Metric], bool] = is_comparable
     note: Callable[[Any], str] = no_note
     unit: Callable[[Any], str] = no_note
 
@@ -247,10 +229,13 @@ def verdict(change: float, better: Better) -> str:
 
 
 def cell(headline: Headline, metric: Metric) -> Cell:
-    change = metric.change if headline.comparable(metric) else 0
+    shown = headline.shown(metric.value)
+    if not headline.comparable(metric):
+        return Cell(shown, headline.change.unknown, "flat", "neutral")
+    change = headline.change.rounded(metric)
     return Cell(
-        headline.shown(metric.value),
-        headline.change(metric),
+        shown,
+        headline.change.text(metric),
         direction(change),
         verdict(change, headline.better),
     )
@@ -268,13 +253,14 @@ def figure(headline: Headline, section: Any) -> Figure | Missing:
     coverage = section.coverage
     shown = cell(headline, metric)
     unit = headline.unit(section)
+    was = f"{headline.shown(metric.previous)}{unit}" if metric.comparable else NONE
     return Figure(
         label=headline.label,
         value=shown.value + unit,
         change=shown.change,
         direction=shown.direction,
         verdict=shown.verdict,
-        was=f"{headline.shown(metric.previous)}{unit} {before(coverage.covered.length)}",
+        was=f"{was} {before(coverage.covered.length)}",
         range=coverage.label(),
         periods=periods_of(coverage.period.length),
         trend=metric.trend,
@@ -302,7 +288,7 @@ LISTING_CONVERSION = Headline(
     lambda listing: listing.conversion,
     Better.UP,
     shown=percent,
-    change=points_change,
+    change=Change(1, " pts"),
 )
 STORE_RATING = Headline(
     "Store rating",
@@ -311,7 +297,7 @@ STORE_RATING = Headline(
     Better.UP,
     GOLD,
     shown=rating,
-    change=stars_change,
+    change=Change(2, " stars", unknown=NO_COMPARISON),
     comparable=has_both,
     note=lambda reviews: (
         f"28 day average rating, as of {short_day(reviews.coverage.covered.end)}"
@@ -324,7 +310,7 @@ NEW_RATINGS_AVERAGE = Headline(
     Better.UP,
     GOLD,
     shown=rating,
-    change=stars_change,
+    change=Change(2, " stars", unknown=NO_COMPARISON),
     comparable=has_both,
 )
 NEW_RATINGS = Headline(
@@ -337,7 +323,7 @@ PLAY_CRASH_RATE = Headline(
     Better.DOWN,
     ORANGE,
     shown=rate,
-    change=rate_change,
+    change=Change(2, " pts"),
     note=lambda vitals: (
         f"User-perceived, 28 days, as of {short_day(vitals.coverage.covered.end)}"
     ),
@@ -349,7 +335,7 @@ ANR_RATE = Headline(
     Better.DOWN,
     ORANGE,
     shown=rate,
-    change=rate_change,
+    change=Change(2, " pts"),
 )
 CRASH_FREE_USERS = Headline(
     "Crash free users",
@@ -358,7 +344,7 @@ CRASH_FREE_USERS = Headline(
     Better.UP,
     TEAL,
     shown=crash_free,
-    change=crash_free_change,
+    change=Change(2, " pts"),
     comparable=has_both,
     note=lambda crashlytics: "Users without fatal crashes, UTC days",
 )
@@ -377,8 +363,7 @@ AD_EARNINGS = Headline(
     lambda admob: admob.earnings,
     Better.UP,
     shown=money,
-    change=money_change,
-    comparable=money_changed,
+    change=Change(2, percent=True),
     unit=currency_of,
     note=lambda admob: "Estimated, Pacific Time days",
 )
@@ -391,8 +376,7 @@ AD_ECPM = Headline(
     lambda admob: admob.ecpm,
     Better.UP,
     shown=money,
-    change=money_change,
-    comparable=money_changed,
+    change=Change(2, percent=True),
     unit=currency_of,
 )
 CARDS = (
@@ -435,14 +419,15 @@ SCALE_PAST_VALUE = 1.1
 @dataclass(frozen=True)
 class Bar:
     """One vital against Play's bad behaviour threshold; `fill`, `tick` and `limit` are
-    percents of the bar's width, on a scale that always holds the value and the threshold."""
+    percents of the bar's width, on a scale that always holds the value and the threshold; `tick`
+    is None when there is no value from the period before to mark."""
 
     label: str
     shown: Figure
     threshold: str
     over: bool
     fill: float
-    tick: float
+    tick: float | None
     limit: float
 
 
@@ -459,7 +444,7 @@ def bar(label: str, headline: Headline, vitals: Vitals, threshold: float) -> Bar
         rate(threshold),
         metric.value >= threshold,
         fill=round(metric.value / scale * 100, 1),
-        tick=round(metric.previous / scale * 100, 1),
+        tick=round(metric.previous / scale * 100, 1) if metric.comparable else None,
         limit=round(threshold / scale * 100, 1),
     )
 

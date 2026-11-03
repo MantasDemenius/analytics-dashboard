@@ -189,6 +189,35 @@ class LevelMetricTest(unittest.TestCase):
         self.assertEqual((metric.value, metric.previous), (20, 17))
 
 
+class LevelComparableTest(unittest.TestCase):
+    period = Period(date(2026, 10, 19), date(2026, 10, 21))
+
+    def test_a_level_with_no_data_before_the_window_is_not_comparable(self):
+        metric = Metric.level(
+            lambda day: day.day if day >= self.period.start else None,
+            Coverage(self.period),
+        )
+        self.assertFalse(metric.comparable)
+        self.assertEqual((metric.value, metric.previous), (21, 0.0))
+
+    def test_a_level_of_zero_before_the_window_is_a_real_level(self):
+        metric = Metric.level(
+            lambda day: day.day if day >= self.period.start else 0.0,
+            Coverage(self.period),
+        )
+        self.assertTrue(metric.comparable)
+
+    def test_a_level_known_throughout_is_comparable(self):
+        self.assertTrue(Metric.level(lambda day: 1.0, Coverage(self.period)).comparable)
+
+    def test_a_level_unknown_at_the_end_reads_zero(self):
+        metric = Metric.level(lambda day: None, Coverage(self.period))
+        self.assertEqual(metric.value, 0.0)
+
+    def test_a_metric_built_by_hand_is_comparable(self):
+        self.assertTrue(Metric(1, 0).comparable)
+
+
 class ReviewTest(unittest.TestCase):
     def review(self, reply):
         return Review(

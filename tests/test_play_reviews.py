@@ -233,6 +233,15 @@ class StoreRatingTest(unittest.TestCase):
     def test_is_zero_before_any_rating_exists(self):
         self.assertEqual(run(october()).store_rating.value, 0)
 
+    def test_is_not_compared_when_no_rating_came_before_the_window(self):
+        rating = run(october(csv_row("2026-10-30", 5))).store_rating
+        self.assertFalse(rating.comparable)
+        self.assertEqual(rating.value, 5.0)
+
+    def test_is_compared_when_a_rating_came_before_the_window(self):
+        files = october(csv_row("2026-10-10", 3), csv_row("2026-10-30", 5))
+        self.assertTrue(run(files).store_rating.comparable)
+
     def test_trends_over_twelve_ranges_ending_with_the_value(self):
         files = october(csv_row("2026-10-10", 3), csv_row("2026-10-30", 5))
         trend = run(files).store_rating.trend

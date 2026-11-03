@@ -70,12 +70,12 @@ def daily_values(rows: list[dict], metric: str) -> dict[date, float]:
     return values
 
 
-def rate_on(daily: dict[date, float]) -> Callable[[date], float]:
-    """The rate on a day, or on the newest day before it that has a row."""
+def rate_on(daily: dict[date, float]) -> Callable[[date], float | None]:
+    """The rate on a day, or on the newest day before it that has a row; None before any."""
 
-    def level(day: date) -> float:
+    def level(day: date) -> float | None:
         known = [when for when in daily if when <= day]
-        return daily[max(known)] if known else 0.0
+        return daily[max(known)] if known else None
 
     return level
 

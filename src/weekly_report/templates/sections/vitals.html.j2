@@ -12,7 +12,7 @@
       </div>
       <div class="gauge" role="img" aria-label="{{ bar.label }} {{ bar.shown.value }} against the bad behaviour threshold of {{ bar.threshold }}">
         <div class="fill{{ " over" if bar.over else "" }}" style="width: {{ bar.fill }}%"></div>
-        <span class="tick" style="left: {{ bar.tick }}%"></span>
+        {% if bar.tick is not none %}<span class="tick" style="left: {{ bar.tick }}%"></span>{% endif %}
         <span class="limit" style="left: {{ bar.limit }}%"></span>
       </div>
       <div class="vfoot">
