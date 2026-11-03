@@ -1,0 +1,11 @@
+{% import "macros.html.j2" as m with context %}
+{% set installs = section.installs %}
+{% set periods = section.coverage.period.length | periods_of %}
+<section class="card">
+  <header><h3>New installs<span class="sub">per day</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  {{ m.chart(daily_bars(installs.series, "New installs"), "Daily new installs", 1.9) }}
+</section>
+<section class="card">
+  <header><h3>Last {{ trend_periods }} {{ periods }}<span class="sub">totals</span></h3></header>
+  {{ m.chart(trend_lines(installs.trend, "New installs"), "New installs over the last " ~ trend_periods ~ " " ~ periods, 1.9) }}
+</section>

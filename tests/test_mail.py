@@ -38,7 +38,9 @@ class MessageTest(unittest.TestCase):
     def test_the_body_is_plain_text_with_the_period_and_new_installs(self):
         body = self.message.get_body(("plain",)).get_content()
         self.assertIn("26 Oct to 1 Nov 2026", body)
-        self.assertIn("New installs, 19 Oct to 25 Oct 2026: 69 (+17, +32.7%)", body)
+        self.assertIn(
+            "New installs, 19 Oct to 25 Oct 2026: 69, +17 (+32.7%), better", body
+        )
 
     def test_attaches_the_pdf(self):
         [attachment] = list(self.message.iter_attachments())

@@ -1,3 +1,4 @@
+{% import "macros.html.j2" as m with context %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,49 +7,115 @@
 <title>Weekly app report, {{ report.period.label() }}</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body {
-  margin: 0 auto;
-  max-width: 900px;
-  padding: 24px 16px 40px;
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #1d1d1b;
-  background: #f6f5f1;
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; -webkit-text-size-adjust: 100%; }
+:root {
+  --ink: #16161a; --ink2: #4a4a50; --muted: #76767c; --line: #e6e5e0; --plane: #f4f4f1; --card: #ffffff;
+  --accent: #2a78d6; --good: #00691e; --bad: #b3261e; --flat: #6b6a65;
 }
-header h1 { margin: 0; font-size: 22px; }
-header p { margin: 4px 0 20px; color: #6b6a65; }
-h2 { margin: 0 0 12px; font-size: 18px; }
-h3 { margin: 0 0 10px; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
-h3 .range { font-weight: normal; color: #6b6a65; }
-.problems { background: #fdecea; border: 1px solid #f1b8b2; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; }
-.problems h2 { color: #b3261e; font-size: 15px; margin-bottom: 6px; }
+body { margin: 0; background: var(--plane); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 28px 28px 56px; }
+.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 18px; }
+.eyebrow { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: 30px; line-height: 1.15; margin: 4px 0; letter-spacing: -.02em; font-weight: 700; }
+.meta { color: var(--ink2); font-size: 13px; }
+.key { font-size: 12px; color: var(--muted); text-align: right; line-height: 1.6; }
+.key .d { margin-left: 6px; }
+h2 { font-size: 13px; font-weight: 650; letter-spacing: .02em; margin: 0; }
+.sub { color: var(--muted); font-size: 12px; font-weight: 400; }
+
+.d { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.d .arr { font-size: .78em; margin-right: .25em; position: relative; top: -.05em; }
+.d.better { color: var(--good); }
+.d.worse { color: var(--bad); }
+.d.neutral { color: var(--flat); }
+
+.problems { background: #fdecea; border: 1px solid #f1b8b2; border-radius: 14px; padding: 14px 18px; margin-bottom: 20px; break-inside: avoid; }
+.problems h2 { color: var(--bad); margin-bottom: 6px; }
 .problems ul { margin: 0; padding-left: 18px; }
-.app { margin-bottom: 24px; }
-.app + .app { break-before: page; }
-.card { background: #fff; border: 1px solid #e1e0d9; border-radius: 10px; padding: 14px 16px; break-inside: avoid; }
-.figure { display: grid; grid-template-columns: minmax(0, 12rem) minmax(0, 1fr); gap: 16px; align-items: center; }
-.value { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.label { color: #6b6a65; }
-.change { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.change.up { color: #00691e; }
-.change.down { color: #b3261e; }
-.change.flat { color: #6b6a65; }
-.was { color: #6b6a65; font-size: 12px; }
-.error { color: #b3261e; margin: 0; }
-.muted { color: #6b6a65; margin: 0; }
+
+.glance { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px 6px; margin-bottom: 28px; break-inside: avoid; }
+.glance > header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.glance table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.glance th { text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); }
+.glance td { padding: 11px 10px 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.glance tr:last-child td { border-bottom: 0; }
+.glance .v { font-size: 17px; font-weight: 650; display: block; line-height: 1.2; }
+.glance .d { font-size: 12px; }
+.glance td.missing { font-size: 12px; color: var(--muted); }
+.glance td.missing.failed { color: var(--bad); }
+.appname { display: flex; align-items: center; gap: 10px; font-weight: 650; }
+.av { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+
+.app { margin-top: 8px; }
+.app + .app { break-before: page; margin-top: 44px; }
+.apphead { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; }
+.apphead .av { width: 40px; height: 40px; border-radius: 11px; font-size: 15px; }
+.apphead h2 { font-size: 22px; letter-spacing: -.01em; }
+.nav { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.nav a { font-size: 12px; color: var(--ink2); text-decoration: none; padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 10px; break-inside: avoid; display: flex; flex-direction: column; }
+.kpi .l { font-size: 12px; color: var(--ink2); font-weight: 550; }
+.kpi .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.kpi .d { font-size: 12.5px; font-weight: 550; }
+.kpi .was { font-size: 12px; color: var(--muted); margin-left: 6px; }
+.kpi .chart { margin-top: 8px; }
+.kpi .cap { font-size: 10.5px; color: var(--muted); display: flex; justify-content: space-between; margin-top: 2px; }
+.kpi.missing .v { color: var(--muted); }
+.kpi .why { font-size: 12.5px; color: var(--muted); }
+.kpi.failed .why { color: var(--bad); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px 18px; break-inside: avoid; }
+.card.wide { grid-column: 1 / -1; }
+.card > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; margin-bottom: 12px; }
+.card h3 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: -.005em; }
+.card h3 .sub { margin-left: 6px; }
+.card .error { color: var(--bad); margin: 0; }
+.card .muted { color: var(--muted); margin: 0; }
+.notes { display: flex; flex-direction: column; gap: 12px; }
+.note { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; break-inside: avoid; }
+
 .chart { position: relative; break-inside: avoid; }
 .chart canvas { display: block; }
-@page { size: A4; margin: 12mm; }
+
+@page { size: A4; margin: 12mm 11mm 13mm; }
+@media screen and (max-width: 700px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .top { flex-direction: column; align-items: flex-start; }
+  .key { text-align: left; }
+  .nav { display: none; }
+}
 @media print {
-  body { background: #fff; max-width: none; padding: 0; }
+  body { background: #fff; font-size: 12.5px; }
+  .wrap { max-width: none; padding: 0; }
+  .top { padding-bottom: 12px; }
+  h1 { font-size: 24px; }
+  .nav { display: none; }
+  .glance, .kpi, .card, .note { border-color: #dcdbd5; }
+  .glance { margin-bottom: 14px; }
+  .kpis { gap: 8px; margin-bottom: 8px; }
+  .kpi { padding: 10px 12px 8px; }
+  .kpi .v { font-size: 21px; }
+  .grid { gap: 8px; margin-bottom: 8px; }
+  .card { padding: 12px 14px 14px; }
+  .card > header { break-after: avoid; }
+  .app + .app { margin-top: 0; }
   .chart canvas { width: 100% !important; height: auto !important; }
 }
 </style>
 </head>
 <body>
-<header>
-  <h1>Weekly app report</h1>
-  <p>{{ report.period.label() }} · generated {{ report.generated.strftime("%Y-%m-%d %H:%M") }}</p>
+<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">Weekly app report</div>
+    <h1>{{ report.period.label() }}</h1>
+    <div class="meta">generated {{ report.generated.strftime("%a") }} {{ report.generated.day }} {{ report.generated.strftime("%b %Y, %H:%M") }} · {{ report.apps | length }} app{{ "" if report.apps | length == 1 else "s" }}</div>
+  </div>
+  <div class="key">Every change is against {{ report.period.length | before }}<br><span class="d better"><span class="arr">▲</span>better</span> <span class="d worse"><span class="arr">▼</span>worse</span> <span class="d neutral"><span class="arr">■</span>neutral</span></div>
 </header>
 {% if report.problems %}
 <section class="problems">
@@ -60,45 +127,99 @@ h3 .range { font-weight: normal; color: #6b6a65; }
   </ul>
 </section>
 {% endif %}
+<section class="glance">
+  <header><h2>At a glance</h2><span class="sub">each number over its own section's range</span></header>
+  <table>
+    <thead><tr><th>App</th>{% for headline in glance %}<th>{{ headline.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for app in report.apps %}
+      <tr><td><span class="appname"><span class="av">{{ app.app | initials }}</span><span>{{ app.app }}</span></span></td>
+      {%- for shown in figures(app, glance) %}
+        {% if shown is missing %}
+        <td class="missing{{ " failed" if shown.failed }}">{{ shown.reason }}</td>
+        {%- else %}
+        <td title="{{ shown.range }}"><span class="v">{{ shown.value }}</span>{{ m.change(shown) }}</td>
+        {%- endif %}
+      {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
 {% for app in report.apps %}
-<section class="app">
-  <h2>{{ app.app }}</h2>
-  {% set growth = app.growth %}
-  <section class="card">
-  {% if growth is failure %}
-    <h3>Play: growth</h3>
-    <p class="error">{{ growth.source }}: {{ growth.error }}</p>
-  {% elif growth is unavailable %}
-    <h3>Play: growth <span class="range">{{ growth.period.label() }}</span></h3>
-    <p class="muted">{{ not_available }}</p>
-  {% else %}
-    {% set installs = growth.installs %}
-    {% set direction = "up" if installs.change > 0 else ("down" if installs.change < 0 else "flat") %}
-    <h3>Play: growth <span class="range">{{ growth.coverage.label() }}</span></h3>
-    <div class="figure">
-      <div>
-        <div class="label">New installs</div>
-        <div class="value">{{ installs.value | count }}</div>
-        <div class="change {{ direction }}">{{ installs.change | signed }}{% if installs.percent_change is not none %} ({{ installs.percent_change | signed(1, "%") }}){% endif %}</div>
-        <div class="was">{{ installs.previous | count }} {{ growth.coverage.covered.length | before }}</div>
-      </div>
-      <div class="chart"><canvas id="{{ chart(installs.series, "New installs") }}" role="img" aria-label="Daily new installs"></canvas></div>
+{% set app_index = loop.index0 %}
+<section class="app" id="app-{{ app_index }}">
+  <div class="apphead">
+    <span class="av">{{ app.app | initials }}</span>
+    <h2>{{ app.app }}</h2>
+    <nav class="nav">{% for each in sections %}<a href="#app-{{ app_index }}-{{ each.field }}">{{ each.title }}</a>{% endfor %}</nav>
+  </div>
+  <div class="kpis">
+  {% for shown in figures(app, cards) %}
+    {% if shown is missing %}
+    <div class="kpi missing{{ " failed" if shown.failed }}"><span class="l">{{ shown.label }}</span>
+      <span class="v">–</span>
+      <span class="why">{{ shown.reason }}</span>
+      {% if shown.range %}<span class="why">{{ shown.range }}</span>{% endif %}
     </div>
+    {% else %}
+    <div class="kpi" title="{{ shown.range }}"><span class="l">{{ shown.label }}</span>
+      <span class="v">{{ shown.value }}</span>
+      <span>{{ m.change(shown) }}<span class="was">{{ shown.was }}</span></span>
+      {% if shown.trend %}
+      {{ m.chart(sparkline(shown.trend, shown.colour), shown.label ~ ", " ~ trend_periods ~ " " ~ shown.periods, 3.6) }}
+      <span class="cap"><span>{{ shown.trend[0].day | short_day }}</span><span>{{ trend_periods }} {{ shown.periods }}</span><span>{{ shown.trend[-1].day | short_day }}</span></span>
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endfor %}
+  </div>
+  {% for each in sections %}
+  {% set section = app[each.field] %}
+  <div class="grid" id="app-{{ app_index }}-{{ each.field }}">
+  {% if section is failure %}
+    <section class="card wide"><header><h3>{{ each.title }}</h3></header>
+      <p class="error">{{ section.source }}: {{ section.error }}</p>
+    </section>
+  {% elif section is unavailable %}
+    <section class="card wide"><header><h3>{{ each.title }}</h3><span class="sub">{{ section.period.label() }}</span></header>
+      <p class="muted">{{ not_available }}</p>
+    </section>
+  {% else %}
+    {% include "sections/" ~ each.template %}
   {% endif %}
-  </section>
+  </div>
+  {% endfor %}
 </section>
 {% endfor %}
+</div>
 <script>{{ chart_js | safe }}</script>
 <script>
 Chart.defaults.animation = false;
 Chart.defaults.devicePixelRatio = 2;
 Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+Chart.defaults.font.size = 11;
 Chart.defaults.color = "#6b6a65";
 Chart.defaults.borderColor = "#e1e0d9";
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.boxWidth = 7;
+Chart.defaults.plugins.legend.labels.boxHeight = 7;
+Chart.defaults.plugins.legend.labels.padding = 14;
+Chart.defaults.plugins.legend.labels.color = "#52514e";
+Chart.defaults.plugins.tooltip.backgroundColor = "#0b0b0b";
+Chart.defaults.plugins.tooltip.padding = 8;
+Chart.defaults.plugins.tooltip.cornerRadius = 6;
+Chart.defaults.elements.line.borderWidth = 2;
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 4;
+Chart.defaults.elements.point.hitRadius = 12;
 const CHARTS = {{ charts | tojson }};
 for (const [id, config] of CHARTS) {
   new Chart(document.getElementById(id), config);
 }
+window.addEventListener("beforeprint", () => {
+  for (const id in Chart.instances) Chart.instances[id].resize();
+});
 </script>
 </body>
 </html>

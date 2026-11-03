@@ -1,0 +1,7 @@
+{% macro change(shown) -%}
+<span class="d {{ shown.verdict }}"><span class="arr">{{ {"up": "▲", "down": "▼", "flat": "■"}[shown.direction] }}</span>{{ shown.change }}</span>
+{%- endmacro %}
+
+{% macro chart(config, label, aspect) -%}
+<div class="chart"><canvas id="{{ canvas(config, aspect) }}" role="img" aria-label="{{ label }}"></canvas></div>
+{%- endmacro %}
