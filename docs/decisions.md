@@ -2,9 +2,9 @@
 
 Outcome of a grilling session held on 2026-10-27, before this project had any code, and later
 changes made in this repo (the language moved from Dart to Python on the same day), plus the phase 1
-grilling session of 2026-11-03 ("Phase 1 design" below). Nothing here is specced yet. The
-unverified facts at the bottom are GitHub tickets, and everything else still to be specced is on
-the pinned Roadmap issue.
+grilling session of 2026-11-03 ("Phase 1 design" below). Nothing here is specced yet. No
+unverified fact is open now, and everything else still to be specced is on the pinned Roadmap
+issue.
 
 App-specific details (which apps, their package names, Firebase projects, AdMob IDs, where their
 own repos and docs live) are not in this repo. They are in the gitignored `config/apps.md` on the
@@ -89,7 +89,7 @@ weekly report covering every app, built so later apps plug in through config.
 |---|---|---|
 | Play: growth | new installs, uninstalls, net growth | Play Console's Cloud Storage report bucket (daily updated monthly CSVs), the installs overview file. No API exposes these. See "Play report bucket" below |
 | Play: listing | store listing visitors and install conversion % | Same bucket, the store performance file |
-| Play: ratings | average rating, and the **full text of every new review, all star levels** | Review text: Reviews API first, merged with the bucket's reviews CSV. Average rating: the bucket's ratings CSV. See "Play reviews and rating source" below |
+| Play: ratings | average rating, and the **full text of every new review, all star levels** | Review text: Reviews API first, merged with the bucket's reviews CSV. Average rating: the reviews CSV's 28 day average. See "Play reviews and rating source" below |
 | Play: vitals | crash rate and ANR rate against Play's bad behaviour threshold | Play Developer Reporting API |
 | Crashlytics | crash free users %, **every issue** (not a top N), new and regressed issues called out | Crashlytics REST API (`firebasecrashlytics` `v1alpha`), read with a service account. See "Crashlytics source" below |
 | Feedback | count and **full text of every new report**, both kinds (bug and feedback) | The app's Firestore feedback collection, read with a service account (client rules allow no reads) |
@@ -147,8 +147,9 @@ the `reviews` REST reference, and Play Console help article 6135870 on monthly r
   can straddle two monthly files. File layout, encoding and the merge key are under "Play report
   bucket" below.
 - **Store rating:** neither reviews source can give it, because star-only ratings are missing
-  from the API and averaging only text reviews would skew it. It comes from the bucket's ratings
-  overview CSV, which lags about 7 days and has glitches (see "Play report bucket").
+  from the API and averaging only text reviews would skew it. It is the reviews CSV's 28 day
+  average, because the bucket's ratings overview CSV lags about 7 days, has glitches and did not
+  match Play Console (see "Play report bucket").
 - **New ratings in a range:** the reviews CSV carries every rating, star-only ones included, so
   the average of a range's new ratings is computed from its "Star Rating" column. Checked on
   2026-11-03: Play Console's "Average rating (last 28 days)" read 3.667, exactly the reviews CSV's
@@ -158,7 +159,7 @@ Decision: review text comes from the Reviews API, which has no posting lag, merg
 the reviews CSV, which covers the days the API window has already dropped when a run is late. A
 review written 8 days before a run is gone from the API unless edited, but should be in the CSV by
 then. When a run is so late that neither source can be trusted for the whole week, the report says
-so. The store rating comes from the ratings CSV.
+so. The store rating is the reviews CSV's 28 day average.
 
 ## Play report bucket
 
@@ -203,9 +204,13 @@ only the read only Play permission). The bucket name lives in the app's config, 
   83 / 22, and 3.6521 is 84 / 23 after one 1 star rating), but single rows jump to 1.0 or 0.0 and
   September wandered between 2.5 and 4.0 in a way no lifetime average could. A lifetime average
   rebuilt from every reviews CSV does not match it either (3.80 to 3.89 over the same days), so it
-  cannot stand in. On 2026-11-03 Play Console showed a "Default Google Play rating" of 3.750 (24
-  users), which no export carries; the total appears to follow it with the file's 7 day lag
-  (see "Unverified" below).
+  cannot stand in.
+- **The ratings CSV's total does not match Play Console** (checked 2026-11-03, no match). On the
+  file updated 2026-11-02 the last row (2026-10-29) has `Total Average Rating` 3.7599 and its
+  counts imply 25 ratings, while Play Console's "Default Google Play rating" read 3.750 from 24
+  users on 2026-11-03. The 2026-10-27 row is a glitch with a total of 0.0. The ratings CSV is
+  therefore not the source of the store rating card; the reviews CSV's 28 day average is (see
+  "Phase 1 design").
 - **Reviews CSV columns:** `Package Name`, `App Version Code`, `App Version Name`, `Reviewer
   Language`, `Device`, `Review Submit Date and Time`, `Review Submit Millis Since Epoch`, `Review
   Last Update Date and Time`, `Review Last Update Millis Since Epoch`, `Star Rating`, `Review
@@ -347,10 +352,10 @@ date), the bucket 4 to 7 days.
 **Section rules**
 
 - Installs: `Daily User Installs` and `Daily User Uninstalls` (see "Play report bucket").
-- Store rating card: `Total Average Rating`, labelled "Google Play rating, as of <date>", taking
-  the most common value in the file's last 7 non-zero rows to ride over glitches. If the check
-  under "Unverified" fails, the card falls back to the 28 day average computed from the reviews
-  CSV. The ratings section always shows the range's new ratings (average and count).
+- Store rating card: the 28 day average computed from the reviews CSV (it matched Play Console's
+  3.667 on 2026-11-03; the ratings CSV's total did not match Console, see "Play report bucket"),
+  labelled to say so, as "28 day average rating, as of <date>". The ratings section always shows
+  the range's new ratings (average and count).
 - Reviews: Reviews API requested with `translationLanguage` English; a translated review shows the
   translation in `text` with `originalText` below in smaller type. A review only in the CSV shows
   its original with a language tag. A review the CSV already holds is labelled new or edited by
@@ -473,10 +478,7 @@ repo. This tool sends no alerts of its own.
 
 ## Unverified, check before the spec rests on it
 
-1. Does the ratings CSV's `Total Average Rating` equal Play Console's "Default Google Play
-   rating"? On 2026-11-03 Console showed 3.750; once the file's rows for late October post, its
-   total should read the same. If not, the store rating card uses the fallback under "Phase 1
-   design".
+Nothing is open.
 
 ## Open questions for the spec
 
