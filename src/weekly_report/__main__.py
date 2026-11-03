@@ -212,7 +212,14 @@ def email_report(report: Report, html: Path, chrome: Path | None, to: str) -> bo
     return True
 
 
+def use_utf8_output() -> None:
+    """Makes stdout and stderr UTF-8 whatever they are redirected to."""
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> None:
+    use_utf8_output()
     args = parse_args(sys.argv[1:] if argv is None else argv)
     LOG_FILE.parent.mkdir(exist_ok=True)
     logging.basicConfig(

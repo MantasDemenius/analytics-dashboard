@@ -1,9 +1,16 @@
 import contextlib
 import io
+import sys
 import unittest
 from datetime import date
 
-from weekly_report.__main__ import attempt, build_report, parse_args, requested_range
+from weekly_report.__main__ import (
+    attempt,
+    build_report,
+    parse_args,
+    requested_range,
+    use_utf8_output,
+)
 from weekly_report.model import Failure
 from weekly_report.periods import Period
 
@@ -95,6 +102,28 @@ class BuildReportTest(unittest.TestCase):
         requested = Period(date(2026, 10, 20), date(2026, 11, 2))
         report = build_report([], date(2026, 11, 3), "pub-0", requested)
         self.assertEqual(report.period, requested)
+
+
+class Utf8OutputTest(unittest.TestCase):
+    def legacy_codepage_file(self) -> tuple[io.BytesIO, io.TextIOWrapper]:
+        raw = io.BytesIO()
+        return raw, io.TextIOWrapper(raw, encoding="cp1252", newline="\n")
+
+    def test_a_minus_sign_survives_stdout_redirected_to_a_legacy_codepage(self):
+        raw, stream = self.legacy_codepage_file()
+        with contextlib.redirect_stdout(stream):
+            use_utf8_output()
+            print("growth −3")
+            sys.stdout.flush()
+        self.assertEqual(raw.getvalue().decode("utf-8"), "growth −3\n")
+
+    def test_stderr_is_utf8_too(self):
+        raw, stream = self.legacy_codepage_file()
+        with contextlib.redirect_stderr(stream):
+            use_utf8_output()
+            print("failed −3", file=sys.stderr)
+            sys.stderr.flush()
+        self.assertEqual(raw.getvalue().decode("utf-8"), "failed −3\n")
 
 
 if __name__ == "__main__":
