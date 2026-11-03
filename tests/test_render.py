@@ -4,6 +4,22 @@ import unittest
 from datetime import UTC, date, datetime, timedelta
 
 from weekly_report import render as renderer
+from weekly_report.formatting import signed
+from weekly_report.headlines import (
+    AD_EARNINGS,
+    ANR_RATE,
+    CRASH_FREE_USERS,
+    LISTING_CONVERSION,
+    NEW_INSTALLS,
+    PLAY_CRASH_RATE,
+    SECTIONS,
+    STORE_RATING,
+    Better,
+    Figure,
+    Headline,
+    Missing,
+    figure,
+)
 from weekly_report.model import (
     AdMob,
     AdUnit,
@@ -29,21 +45,6 @@ from weekly_report.model import (
     Vitals,
 )
 from weekly_report.periods import Coverage, Period
-from weekly_report.render import (
-    ANR_RATE,
-    CRASH_FREE_USERS,
-    LISTING_CONVERSION,
-    NEW_INSTALLS,
-    PLAY_CRASH_RATE,
-    SECTIONS,
-    STORE_RATING,
-    Better,
-    Figure,
-    Headline,
-    Missing,
-    figure,
-    signed,
-)
 
 REPORT_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
 BUCKET_WEEK = Period(date(2026, 10, 19), date(2026, 10, 25))
@@ -473,7 +474,7 @@ class RoundedChangeTest(unittest.TestCase):
 
     def test_an_ad_earnings_change_under_a_hundredth_is_no_change(self):
         self.assert_flat(
-            figure(renderer.AD_EARNINGS, admob(earnings=10.004, earnings_before=10.0))
+            figure(AD_EARNINGS, admob(earnings=10.004, earnings_before=10.0))
         )
 
     def test_a_count_change_is_decided_on_whole_numbers(self):
