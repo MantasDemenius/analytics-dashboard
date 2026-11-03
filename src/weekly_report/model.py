@@ -65,6 +65,22 @@ class Metric:
             ),
         )
 
+    @classmethod
+    def ratio(cls, part: Metric, whole: Metric) -> Metric:
+        """`part` as a percent of `whole`, from their sums, never an average of daily ratios."""
+
+        def percent(numerator: float, denominator: float) -> float:
+            return numerator / denominator * 100 if denominator else 0.0
+
+        return cls(
+            value=percent(part.value, whole.value),
+            previous=percent(part.previous, whole.previous),
+            trend=tuple(
+                Point(each.day, percent(each.value, total.value))
+                for each, total in zip(part.trend, whole.trend, strict=True)
+            ),
+        )
+
     @property
     def change(self) -> float:
         return self.value - self.previous
@@ -73,7 +89,7 @@ class Metric:
     def percent_change(self) -> float | None:
         if self.previous == 0:
             return None
-        return self.change / self.previous * 100
+        return self.change / abs(self.previous) * 100
 
 
 @dataclass(frozen=True)
@@ -96,6 +112,16 @@ class Unavailable:
 class Growth:
     coverage: Coverage
     installs: Metric
+    uninstalls: Metric
+    net: Metric
+
+
+@dataclass(frozen=True)
+class Listing:
+    coverage: Coverage
+    visitors: Metric
+    acquisitions: Metric
+    conversion: Metric
 
 
 @dataclass(frozen=True)
@@ -104,6 +130,7 @@ class AppReport:
 
     app: str
     growth: Growth | Unavailable | Failure
+    listing: Listing | Unavailable | Failure
 
     def failures(self) -> list[Failure]:
         sections = (getattr(self, f.name) for f in fields(self) if f.name != "app")

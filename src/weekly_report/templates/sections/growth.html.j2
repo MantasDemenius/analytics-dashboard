@@ -1,11 +1,12 @@
 {% import "macros.html.j2" as m with context %}
-{% set installs = section.installs %}
 {% set periods = section.coverage.period.length | periods_of %}
+{% set installs = Series("Installs", section.installs.series) %}
+{% set uninstalls = Series("Uninstalls", section.uninstalls.series, ORANGE) %}
 <section class="card">
-  <header><h3>New installs<span class="sub">per day</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
-  {{ m.chart(daily_bars(installs.series, "New installs"), "Daily new installs", 1.9) }}
+  <header><h3>Installs and uninstalls<span class="sub">per day</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  {{ m.chart(daily_bars(installs, uninstalls), "Daily installs and uninstalls", 1.9) }}
 </section>
 <section class="card">
   <header><h3>Last {{ trend_periods }} {{ periods }}<span class="sub">totals</span></h3></header>
-  {{ m.chart(trend_lines(installs.trend, "New installs"), "New installs over the last " ~ trend_periods ~ " " ~ periods, 1.9) }}
+  {{ m.chart(trend_lines(Series("Installs", section.installs.trend), Series("Uninstalls", section.uninstalls.trend, ORANGE)), "Installs and uninstalls over the last " ~ trend_periods ~ " " ~ periods, 1.9) }}
 </section>

@@ -21,13 +21,16 @@ from weekly_report.periods import TREND_PERIODS
 MINUS = "−"
 NOT_AVAILABLE = "not available for this range"
 BLUE = "#2a78d6"
+ORANGE = "#d9622b"
+TEAL = "#1a8f72"
 
 
 def signed(number: float, digits: int = 0, unit: str = "") -> str:
-    text = f"{abs(number):,.{digits}f}{unit}"
-    if number > 0:
+    rounded = round(number, digits)
+    text = f"{abs(rounded):,.{digits}f}{unit}"
+    if rounded > 0:
         return f"+{text}"
-    if number < 0:
+    if rounded < 0:
         return f"{MINUS}{text}"
     return text
 
@@ -62,6 +65,16 @@ def change_text(metric: Metric) -> str:
     if metric.percent_change is None:
         return signed(metric.change)
     return f"{signed(metric.change)} ({signed(metric.percent_change, 1, '%')})"
+
+
+def percent(number: float) -> str:
+    return f"{number:.1f}%"
+
+
+def points_change(metric: Metric) -> str:
+    if metric.change == 0:
+        return "no change"
+    return signed(metric.change, 1, " pts")
 
 
 class Better(Enum):
@@ -163,8 +176,22 @@ def figures(app: AppReport, headlines: tuple[Headline, ...]) -> list[Figure | Mi
 NEW_INSTALLS = Headline(
     "New installs", "growth", lambda growth: growth.installs, Better.UP
 )
-CARDS = (NEW_INSTALLS,)
-GLANCE = (NEW_INSTALLS,)
+UNINSTALLS = Headline(
+    "Uninstalls", "growth", lambda growth: growth.uninstalls, Better.DOWN, ORANGE
+)
+NET_GROWTH = Headline(
+    "Net growth", "growth", lambda growth: growth.net, Better.UP, TEAL, shown=signed
+)
+LISTING_CONVERSION = Headline(
+    "Listing conversion",
+    "listing",
+    lambda listing: listing.conversion,
+    Better.UP,
+    shown=percent,
+    change=points_change,
+)
+CARDS = (NEW_INSTALLS, UNINSTALLS, NET_GROWTH, LISTING_CONVERSION)
+GLANCE = (NET_GROWTH,)
 SECTIONS = (Section("growth", "Play: growth", "growth.html.j2"),)
 
 
@@ -175,6 +202,13 @@ def initials(name: str) -> str:
 
 def day_label(point: Point) -> str:
     return f"{point.day:%a} {point.day.day} {point.day:%b}"
+
+
+@dataclass(frozen=True)
+class Series:
+    label: str
+    points: tuple[Point, ...]
+    colour: str = BLUE
 
 
 def sparkline(points: tuple[Point, ...], colour: str) -> dict:
@@ -223,50 +257,56 @@ def axes() -> dict:
     }
 
 
-def daily_bars(points: tuple[Point, ...], label: str, colour: str = BLUE) -> dict:
+def legend(series: tuple[Series, ...]) -> dict:
+    return {"display": len(series) > 1, "position": "top", "align": "start"}
+
+
+def daily_bars(*series: Series) -> dict:
     return {
         "type": "bar",
         "data": {
-            "labels": [day_label(point) for point in points],
+            "labels": [day_label(point) for point in series[0].points],
             "datasets": [
                 {
-                    "label": label,
-                    "data": [point.value for point in points],
-                    "backgroundColor": colour,
+                    "label": each.label,
+                    "data": [point.value for point in each.points],
+                    "backgroundColor": each.colour,
                     "borderRadius": 4,
                     "borderSkipped": "start",
                     "maxBarThickness": 34,
                 }
+                for each in series
             ],
         },
         "options": {
             "interaction": {"mode": "index", "intersect": False},
-            "plugins": {"legend": {"display": False}},
+            "plugins": {"legend": legend(series)},
             "scales": axes(),
         },
     }
 
 
-def trend_lines(points: tuple[Point, ...], label: str, colour: str = BLUE) -> dict:
+def trend_lines(*series: Series) -> dict:
     return {
         "type": "line",
         "data": {
-            "labels": [short_day(point.day) for point in points],
+            "labels": [short_day(point.day) for point in series[0].points],
             "datasets": [
                 {
-                    "label": label,
-                    "data": [point.value for point in points],
-                    "borderColor": colour,
-                    "backgroundColor": colour,
+                    "label": each.label,
+                    "data": [point.value for point in each.points],
+                    "borderColor": each.colour,
+                    "backgroundColor": each.colour,
                     "tension": 0.25,
-                    "pointRadius": [0] * (len(points) - 1) + [3.5],
-                    "pointBackgroundColor": colour,
+                    "pointRadius": [0] * (len(each.points) - 1) + [3.5],
+                    "pointBackgroundColor": each.colour,
                 }
+                for each in series
             ],
         },
         "options": {
             "interaction": {"mode": "index", "intersect": False},
-            "plugins": {"legend": {"position": "top", "align": "start"}},
+            "plugins": {"legend": legend(series)},
             "scales": axes(),
         },
     }
@@ -310,6 +350,8 @@ def render(
         "not_available": NOT_AVAILABLE,
         "trend_periods": TREND_PERIODS,
         "canvas": canvas,
+        "Series": Series,
+        "ORANGE": ORANGE,
         "sparkline": sparkline,
         "daily_bars": daily_bars,
         "trend_lines": trend_lines,

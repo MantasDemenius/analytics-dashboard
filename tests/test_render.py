@@ -3,10 +3,12 @@ import re
 import unittest
 from datetime import date, datetime, timedelta
 
+from weekly_report import render as renderer
 from weekly_report.model import (
     AppReport,
     Failure,
     Growth,
+    Listing,
     Metric,
     Point,
     Report,
@@ -15,17 +17,18 @@ from weekly_report.model import (
 from weekly_report.periods import Coverage, Period
 from weekly_report.render import (
     NEW_INSTALLS,
+    SECTIONS,
     Better,
     Figure,
     Headline,
     Missing,
     figure,
-    render,
-    summary,
+    signed,
 )
 
 REPORT_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
 BUCKET_WEEK = Period(date(2026, 10, 19), date(2026, 10, 25))
+LISTING_WEEK = Period(date(2026, 10, 12), date(2026, 10, 18))
 GENERATED = datetime(2026, 11, 2, 8, 0)
 
 
@@ -35,15 +38,54 @@ def weekly_trend(value):
     ) + (Point(date(2026, 10, 19), value),)
 
 
-def growth(value=69, previous=52, coverage=None):
+def growth(value=69, previous=52, coverage=None, uninstalls=(20, 25)):
     coverage = coverage or Coverage(BUCKET_WEEK)
     series = tuple(Point(day, 10) for day in coverage.covered.days())
+    gone, gone_before = uninstalls
     return Growth(
         coverage=coverage,
         installs=Metric(
             value=value, previous=previous, series=series, trend=weekly_trend(value)
         ),
+        uninstalls=Metric(
+            value=gone,
+            previous=gone_before,
+            series=tuple(Point(day, 3) for day in coverage.covered.days()),
+            trend=weekly_trend(gone),
+        ),
+        net=Metric(
+            value=value - gone,
+            previous=previous - gone_before,
+            trend=weekly_trend(value - gone),
+        ),
     )
+
+
+def listing(conversion=12.5, previous=10.0, coverage=None):
+    return Listing(
+        coverage=coverage or Coverage(LISTING_WEEK),
+        visitors=Metric(value=400, previous=380),
+        acquisitions=Metric(value=50, previous=38),
+        conversion=Metric(
+            value=conversion, previous=previous, trend=weekly_trend(conversion)
+        ),
+    )
+
+
+def app(name, growth_section=None, listing_section=None):
+    return AppReport(
+        name,
+        growth() if growth_section is None else growth_section,
+        listing() if listing_section is None else listing_section,
+    )
+
+
+def render(page, cards=(NEW_INSTALLS,), glance=(NEW_INSTALLS,), sections=SECTIONS):
+    return renderer.render(page, cards, glance, sections)
+
+
+def summary(page, glance=(NEW_INSTALLS,)):
+    return renderer.summary(page, glance)
 
 
 def report(*apps, period=REPORT_WEEK):
@@ -81,6 +123,19 @@ def cards(html: str) -> list[str]:
 
 def installs(better):
     return Headline("Installs", "growth", lambda section: section.installs, better)
+
+
+class SignedTest(unittest.TestCase):
+    def test_marks_a_rise_and_a_fall(self):
+        self.assertEqual(signed(2.5, 1, " pts"), "+2.5 pts")
+        self.assertEqual(signed(-2.5, 1, " pts"), "−2.5 pts")
+
+    def test_a_change_that_rounds_to_nothing_has_no_sign(self):
+        self.assertEqual(signed(0.04, 1, " pts"), "0.0 pts")
+        self.assertEqual(signed(-0.04, 1, " pts"), "0.0 pts")
+
+    def test_no_change_has_no_sign(self):
+        self.assertEqual(signed(0), "0")
 
 
 class FigureTest(unittest.TestCase):
@@ -123,9 +178,9 @@ class FigureTest(unittest.TestCase):
 
     def test_carries_the_previous_value_the_range_and_the_trend(self):
         trend = (Point(date(2026, 8, 3), 40), Point(date(2026, 8, 10), 52))
+        metric = Metric(value=69, previous=52, trend=trend)
         section = Growth(
-            Coverage(BUCKET_WEEK, date(2026, 10, 22)),
-            Metric(value=69, previous=52, trend=trend),
+            Coverage(BUCKET_WEEK, date(2026, 10, 22)), metric, metric, metric
         )
         shown = figure(NEW_INSTALLS, section)
         self.assertIsInstance(shown, Figure)
@@ -155,16 +210,16 @@ class FigureTest(unittest.TestCase):
 
 class TopTest(unittest.TestCase):
     def test_shows_the_report_range_and_when_it_was_made(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         top = part(html, '<header class="top"', "</header>")
         self.assertIn("26 Oct to 1 Nov 2026", top)
         self.assertIn("generated Mon 2 Nov 2026, 08:00", top)
 
     def test_the_key_says_what_every_change_is_against(self):
-        week = render(report(AppReport("first", growth())))
+        week = render(report(app("first", growth())))
         ten_days = render(
             report(
-                AppReport("first", growth()),
+                app("first", growth()),
                 period=Period(date(2026, 10, 1), date(2026, 10, 10)),
             )
         )
@@ -181,9 +236,7 @@ class GlanceTest(unittest.TestCase):
         )
 
     def test_has_a_column_per_headline_and_a_row_per_app(self):
-        glance = self.glance(
-            AppReport("first", growth()), AppReport("second", growth())
-        )
+        glance = self.glance(app("first", growth()), app("second", growth()))
         self.assertEqual(
             re.findall(r"<th>(.*?)</th>", glance), ["App", "New installs", "Installs"]
         )
@@ -193,7 +246,7 @@ class GlanceTest(unittest.TestCase):
         self.assertLess(body.index(">first<"), body.index(">second<"))
 
     def test_shows_each_value_with_its_change_coloured_by_better_or_worse(self):
-        glance = self.glance(AppReport("first", growth(value=69, previous=52)))
+        glance = self.glance(app("first", growth(value=69, previous=52)))
         row = part(glance, "<tbody>", "</tbody>")
         self.assertIn(">69<", row)
         self.assertIn(
@@ -205,8 +258,8 @@ class GlanceTest(unittest.TestCase):
 
     def test_a_failed_and_an_unreachable_section_say_so_in_their_cells(self):
         glance = self.glance(
-            AppReport("first", Failure("Play report bucket", "403 Forbidden")),
-            AppReport("second", Unavailable("Play report bucket", BUCKET_WEEK)),
+            app("first", Failure("Play report bucket", "403 Forbidden")),
+            app("second", Unavailable("Play report bucket", BUCKET_WEEK)),
         )
         self.assertEqual(glance.count("Play report bucket failed"), 2)
         self.assertEqual(glance.count("not available for this range"), 2)
@@ -220,19 +273,17 @@ class GlanceTest(unittest.TestCase):
 class NumberCardTest(unittest.TestCase):
     def test_each_app_gets_a_card_per_headline_in_order(self):
         html = render(
-            report(AppReport("first", growth()), AppReport("second", growth())),
+            report(app("first", growth()), app("second", growth())),
             cards=(NEW_INSTALLS, installs(Better.DOWN)),
         )
-        for app in apps(html):
+        for each in apps(html):
             labels = re.findall(
-                r'<span class="l">(.*?)</span>', part(app, '<div class="kpis">')
+                r'<span class="l">(.*?)</span>', part(each, '<div class="kpis">')
             )
             self.assertEqual(labels, ["New installs", "Installs"])
 
     def test_a_card_shows_its_value_change_and_previous_value(self):
-        [card] = cards(
-            render(report(AppReport("first", growth(value=69, previous=52))))
-        )
+        [card] = cards(render(report(app("first", growth(value=69, previous=52)))))
         self.assertIn(">69<", card)
         self.assertIn(
             '<span class="d better"><span class="arr">▲</span>+17 (+32.7%)', card
@@ -242,13 +293,11 @@ class NumberCardTest(unittest.TestCase):
     def test_a_fall_that_is_better_and_no_change(self):
         fall = cards(
             render(
-                report(AppReport("first", growth(value=40, previous=50))),
+                report(app("first", growth(value=40, previous=50))),
                 cards=(installs(Better.DOWN),),
             )
         )[0]
-        flat = cards(render(report(AppReport("first", growth(value=50, previous=50)))))[
-            0
-        ]
+        flat = cards(render(report(app("first", growth(value=50, previous=50)))))[0]
         self.assertIn(
             '<span class="d better"><span class="arr">▼</span>−10 (−20.0%)', fall
         )
@@ -257,7 +306,7 @@ class NumberCardTest(unittest.TestCase):
         )
 
     def test_a_card_draws_its_12_period_sparkline(self):
-        html = render(report(AppReport("first", growth(value=69))))
+        html = render(report(app("first", growth(value=69))))
         [card] = cards(html)
         sparkline = chart(html, "New installs, 12 weeks")
         self.assertIn("New installs, 12 weeks", card)
@@ -268,7 +317,7 @@ class NumberCardTest(unittest.TestCase):
         self.assertIn("19 Oct", card)
 
     def test_a_card_of_a_failed_section_says_so_without_a_sparkline(self):
-        html = render(report(AppReport("first", Failure("Play report bucket", "boom"))))
+        html = render(report(app("first", Failure("Play report bucket", "boom"))))
         [card] = cards(html)
         self.assertIn('class="kpi missing failed"', html)
         self.assertIn("Play report bucket failed", card)
@@ -277,7 +326,7 @@ class NumberCardTest(unittest.TestCase):
 
     def test_a_card_of_an_unreachable_section_says_so(self):
         html = render(
-            report(AppReport("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+            report(app("first", Unavailable("Play report bucket", BUCKET_WEEK)))
         )
         [card] = cards(html)
         self.assertIn('class="kpi missing"', html)
@@ -287,19 +336,33 @@ class NumberCardTest(unittest.TestCase):
 
 class GrowthSectionTest(unittest.TestCase):
     def test_shows_its_own_range(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         self.assertIn("19 Oct to 25 Oct 2026", part(html, 'id="app-0-growth"'))
 
     def test_draws_the_daily_installs_chart(self):
-        html = render(report(AppReport("first", growth())))
-        daily = chart(html, "Daily new installs")
+        html = render(report(app("first", growth())))
+        daily = chart(html, "Daily installs and uninstalls")
         self.assertEqual(daily["type"], "bar")
         self.assertEqual(values(daily), [10] * 7)
         self.assertEqual(daily["data"]["labels"][0], "Mon 19 Oct")
 
+    def test_the_daily_chart_pairs_installs_with_uninstalls(self):
+        html = render(report(app("first")))
+        daily = chart(html, "Daily installs and uninstalls")
+        labels = [each["label"] for each in daily["data"]["datasets"]]
+        self.assertEqual(labels, ["Installs", "Uninstalls"])
+        self.assertEqual(daily["data"]["datasets"][1]["data"], [3] * 7)
+        self.assertTrue(daily["options"]["plugins"]["legend"]["display"])
+
+    def test_the_trend_draws_a_line_each_for_installs_and_uninstalls(self):
+        html = render(report(app("first", growth(value=69, uninstalls=(20, 25)))))
+        trend = chart(html, "Installs and uninstalls over the last 12 weeks")
+        lines = {each["label"]: each["data"][-1] for each in trend["data"]["datasets"]}
+        self.assertEqual(lines, {"Installs": 69, "Uninstalls": 20})
+
     def test_draws_the_12_period_trend(self):
-        html = render(report(AppReport("first", growth(value=69))))
-        trend = chart(html, "New installs over the last 12 weeks")
+        html = render(report(app("first", growth(value=69))))
+        trend = chart(html, "Installs and uninstalls over the last 12 weeks")
         self.assertEqual(trend["type"], "line")
         self.assertEqual(values(trend)[-1], 69)
         self.assertEqual(trend["data"]["labels"][0], "3 Aug")
@@ -307,26 +370,26 @@ class GrowthSectionTest(unittest.TestCase):
 
     def test_a_partly_covered_section_says_where_its_data_ends(self):
         coverage = Coverage(BUCKET_WEEK, date(2026, 10, 22))
-        html = render(report(AppReport("first", growth(coverage=coverage))))
+        html = render(report(app("first", growth(coverage=coverage))))
         self.assertIn("19 Oct to 25 Oct 2026, data to 22 Oct", html)
         self.assertIn("52 the 4 days before", html)
-        self.assertEqual(len(values(chart(html, "Daily new installs"))), 4)
+        self.assertEqual(len(values(chart(html, "Daily installs and uninstalls"))), 4)
 
     def test_a_range_that_is_not_a_week_names_its_length(self):
         coverage = Coverage(Period(date(2026, 10, 1), date(2026, 10, 10)))
-        html = render(report(AppReport("first", growth(coverage=coverage))))
+        html = render(report(app("first", growth(coverage=coverage))))
         self.assertIn("52 the 10 days before", html)
         self.assertIn("Last 12 periods of 10 days", html)
 
     def test_a_single_day_range(self):
         coverage = Coverage(Period(date(2026, 10, 1), date(2026, 10, 1)))
-        html = render(report(AppReport("first", growth(coverage=coverage))))
+        html = render(report(app("first", growth(coverage=coverage))))
         self.assertIn("52 the day before", html)
         self.assertIn("Last 12 days", html)
 
     def test_an_unreachable_range_says_so_and_is_no_problem(self):
         html = render(
-            report(AppReport("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+            report(app("first", Unavailable("Play report bucket", BUCKET_WEEK)))
         )
         section = part(html, 'id="app-0-growth"')
         self.assertIn("not available for this range", section)
@@ -336,33 +399,137 @@ class GrowthSectionTest(unittest.TestCase):
 
     def test_a_failed_section_shows_its_error_in_a_full_width_card(self):
         failure = Failure(source="Play report bucket", error="403 Forbidden")
-        html = render(report(AppReport("first", failure)))
+        html = render(report(app("first", failure)))
         section = part(html, 'id="app-0-growth"')
         self.assertIn('class="card wide"', section)
         self.assertIn("Play report bucket: 403 Forbidden", section)
 
     def test_a_fall_shows_a_minus(self):
-        html = render(report(AppReport("first", growth(value=40, previous=50))))
+        html = render(report(app("first", growth(value=40, previous=50))))
         self.assertIn("−10", html)
         self.assertIn("−20.0%", html)
 
     def test_a_rise_from_zero_has_no_percent(self):
-        html = render(report(AppReport("first", growth(value=4, previous=0))))
+        html = render(report(app("first", growth(value=4, previous=0))))
         self.assertIn("+4", html)
         self.assertNotIn("%</", html)
 
 
+class DefaultCardsTest(unittest.TestCase):
+    def cards(self, *apps):
+        return cards(renderer.render(report(*apps)))
+
+    def labels(self, html):
+        return re.findall(r'<span class="l">(.*?)</span>', html)
+
+    def test_are_installs_uninstalls_net_growth_and_listing_conversion(self):
+        html = renderer.render(report(app("first")))
+        self.assertEqual(
+            self.labels(part(html, '<div class="kpis">')),
+            ["New installs", "Uninstalls", "Net growth", "Listing conversion"],
+        )
+
+    def test_a_rise_in_uninstalls_is_worse(self):
+        uninstalls = self.cards(app("first", growth(uninstalls=(30, 25))))[1]
+        self.assertIn(
+            '<span class="d worse"><span class="arr">▲</span>+5 (+20.0%)', uninstalls
+        )
+
+    def test_net_growth_shows_its_sign(self):
+        net = self.cards(app("first", growth(value=69, uninstalls=(20, 25))))[2]
+        self.assertIn(">+49<", net)
+        self.assertIn("+27 the week before", net)
+
+    def test_a_negative_net_growth_is_a_minus_and_a_rise_from_it_is_better(self):
+        net = self.cards(
+            app("first", growth(value=10, previous=2, uninstalls=(25, 20)))
+        )[2]
+        self.assertIn(">−15<", net)
+        self.assertIn(
+            '<span class="d better"><span class="arr">▲</span>+3 (+16.7%)', net
+        )
+
+    def test_net_growth_draws_its_own_sparkline(self):
+        html = renderer.render(report(app("first", growth(value=69))))
+        self.assertEqual(values(chart(html, "Net growth, 12 weeks"))[-1], 49)
+
+    def test_listing_conversion_is_a_percent_changing_in_points(self):
+        conversion = self.cards(app("first", listing_section=listing(12.5, 10.0)))[3]
+        self.assertIn(">12.5%<", conversion)
+        self.assertIn(
+            '<span class="d better"><span class="arr">▲</span>+2.5 pts', conversion
+        )
+        self.assertIn("10.0% the week before", conversion)
+
+    def test_a_fall_in_listing_conversion_is_worse_and_no_change_is_flat(self):
+        fall = self.cards(app("first", listing_section=listing(8.0, 10.0)))[3]
+        flat = self.cards(app("first", listing_section=listing(10.0, 10.0)))[3]
+        self.assertIn('<span class="d worse"><span class="arr">▼</span>−2.0 pts', fall)
+        self.assertIn('<span class="arr">■</span>no change', flat)
+
+    def test_listing_conversion_shows_the_listing_files_own_range(self):
+        conversion = self.cards(app("first"))[3]
+        self.assertIn("12 Oct to 18 Oct 2026", conversion)
+        self.assertIn("19 Oct to 25 Oct 2026", self.cards(app("first"))[0])
+
+    def test_a_failed_listing_fails_only_its_card_and_is_one_problem(self):
+        failure = Failure("Play report bucket", "403 Forbidden")
+        html = renderer.render(report(app("first", listing_section=failure)))
+        shown = cards(html)
+        self.assertIn('class="kpi missing failed"', html)
+        self.assertEqual(html.count('class="kpi missing failed"'), 1)
+        self.assertIn("Play report bucket failed", shown[3])
+        self.assertIn("69", shown[0])
+        self.assertEqual(part(html, '<section class="problems"').count("<li>"), 1)
+
+    def test_an_unreachable_listing_range_says_so_and_is_no_problem(self):
+        unavailable = Unavailable("Play report bucket", LISTING_WEEK)
+        html = renderer.render(report(app("first", listing_section=unavailable)))
+        self.assertIn("not available for this range", cards(html)[3])
+        self.assertNotIn('class="problems"', html)
+
+    def test_a_partly_covered_listing_says_where_its_data_ends(self):
+        coverage = Coverage(LISTING_WEEK, date(2026, 10, 15))
+        conversion = self.cards(
+            app("first", listing_section=listing(coverage=coverage))
+        )[3]
+        self.assertIn("12 Oct to 18 Oct 2026, data to 15 Oct", conversion)
+
+
+class DefaultGlanceTest(unittest.TestCase):
+    def test_is_net_growth_alone(self):
+        html = renderer.render(report(app("first", growth(value=69, previous=52))))
+        glance = part(html, '<section class="glance"')
+        self.assertEqual(re.findall(r"<th>(.*?)</th>", glance), ["App", "Net growth"])
+        self.assertIn(">+49<", glance)
+
+    def test_the_email_body_line_is_net_growth(self):
+        lines = renderer.summary(report(app("first", growth(value=69, previous=52))))
+        self.assertEqual(
+            lines[2:],
+            [
+                "first",
+                "  Net growth, 19 Oct to 25 Oct 2026: +49, +22 (+81.5%), better",
+            ],
+        )
+
+    def test_a_listing_failure_is_a_problem_but_not_a_glance_gap(self):
+        failure = Failure("Play report bucket", "403 Forbidden")
+        lines = renderer.summary(report(app("first", listing_section=failure)))
+        self.assertIn("  first, Play report bucket: 403 Forbidden", lines)
+        self.assertEqual(lines[-1][:12], "  Net growth")
+        self.assertNotIn("see Problems", lines[-1])
+
+
 class PageTest(unittest.TestCase):
     def test_every_app_gets_its_own_part_with_its_name(self):
-        html = render(
-            report(AppReport("first", growth()), AppReport("second", growth()))
-        )
+        html = render(report(app("first", growth()), app("second", growth())))
         first, second = apps(html)
         self.assertIn(">first<", first)
         self.assertIn(">second<", second)
 
     def test_inlines_chart_js_with_animation_off(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         self.assertIn("Chart.js v4.4.1", html)
         self.assertIn("Released under the MIT License", html)
         self.assertLess(
@@ -371,12 +538,12 @@ class PageTest(unittest.TestCase):
         self.assertNotIn("<script src=", html)
 
     def test_prints_on_a4_with_each_app_on_a_new_page(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         self.assertIn("@page { size: A4;", html)
         self.assertIn(".app + .app { break-before: page;", html)
 
     def test_grid_columns_shrink_and_cards_do_not_split(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         self.assertIn("repeat(4, minmax(0, 1fr))", html)
         self.assertIn("minmax(0, 1fr) minmax(0, 1fr)", html)
         self.assertNotRegex(html, r"repeat\(\d, 1fr\)")
@@ -384,7 +551,7 @@ class PageTest(unittest.TestCase):
         self.assertRegex(html, r"\.card \{[^}]*break-inside: avoid")
 
     def test_forces_chart_canvas_size_only_when_printing(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         forced = [
             match.start() for match in re.finditer(r"width: 100% !important", html)
         ]
@@ -394,19 +561,19 @@ class PageTest(unittest.TestCase):
 
 class ProblemsTest(unittest.TestCase):
     def test_no_failures_means_no_problems_box(self):
-        html = render(report(AppReport("first", growth())))
+        html = render(report(app("first", growth())))
         self.assertNotIn('class="problems"', html)
 
     def test_a_failed_source_shows_in_the_problems_box_and_its_section(self):
         failure = Failure(source="Play report bucket", error="403 Forbidden")
-        html = render(report(AppReport("first", failure)))
+        html = render(report(app("first", failure)))
         problems = part(html, '<section class="problems"')
         self.assertIn("<b>first</b>, Play report bucket: 403 Forbidden", problems)
         self.assertEqual(html.count("403 Forbidden"), 2)
 
     def test_the_problems_box_comes_before_the_at_a_glance_table(self):
         failure = Failure(source="Play report bucket", error="403 Forbidden")
-        html = render(report(AppReport("first", failure)))
+        html = render(report(app("first", failure)))
         self.assertLess(
             html.index('<section class="problems"'),
             html.index('<section class="glance"'),
@@ -415,8 +582,8 @@ class ProblemsTest(unittest.TestCase):
     def test_lists_every_failure_of_every_app(self):
         html = render(
             report(
-                AppReport("first", Failure("Play report bucket", "403 Forbidden")),
-                AppReport("second", Failure("Play report bucket", "timed out")),
+                app("first", Failure("Play report bucket", "403 Forbidden")),
+                app("second", Failure("Play report bucket", "timed out")),
             )
         )
         problems = part(html, '<section class="problems"')
@@ -425,7 +592,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_error_text_is_escaped(self):
         failure = Failure(source="Play report bucket", error="<b>bad</b>")
-        html = render(report(AppReport("first", failure)))
+        html = render(report(app("first", failure)))
         self.assertNotIn("<b>bad</b>", html)
         self.assertIn("&lt;b&gt;bad&lt;/b&gt;", html)
 
@@ -433,7 +600,7 @@ class ProblemsTest(unittest.TestCase):
 class SummaryTest(unittest.TestCase):
     def test_lists_the_period_and_each_apps_at_a_glance_numbers(self):
         self.assertEqual(
-            summary(report(AppReport("first", growth(value=69, previous=52)))),
+            summary(report(app("first", growth(value=69, previous=52)))),
             [
                 "Weekly app report, 26 Oct to 1 Nov 2026",
                 "",
@@ -443,8 +610,8 @@ class SummaryTest(unittest.TestCase):
         )
 
     def test_says_worse_and_unchanged_in_words(self):
-        fall = summary(report(AppReport("first", growth(value=40, previous=50))))
-        flat = summary(report(AppReport("first", growth(value=50, previous=50))))
+        fall = summary(report(app("first", growth(value=40, previous=50))))
+        flat = summary(report(app("first", growth(value=50, previous=50))))
         self.assertEqual(
             fall[-1], "  New installs, 19 Oct to 25 Oct 2026: 40, −10 (−20.0%), worse"
         )
@@ -453,14 +620,14 @@ class SummaryTest(unittest.TestCase):
         )
 
     def test_a_rise_from_zero_shows_no_percent(self):
-        lines = summary(report(AppReport("first", growth(value=4, previous=0))))
+        lines = summary(report(app("first", growth(value=4, previous=0))))
         self.assertEqual(
             lines[-1], "  New installs, 19 Oct to 25 Oct 2026: 4, +4, better"
         )
 
     def test_a_partly_covered_section_says_where_its_data_ends(self):
         coverage = Coverage(BUCKET_WEEK, date(2026, 10, 22))
-        lines = summary(report(AppReport("first", growth(coverage=coverage))))
+        lines = summary(report(app("first", growth(coverage=coverage))))
         self.assertEqual(
             lines[-1],
             "  New installs, 19 Oct to 25 Oct 2026, data to 22 Oct: "
@@ -469,7 +636,7 @@ class SummaryTest(unittest.TestCase):
 
     def test_an_unreachable_range_says_so(self):
         lines = summary(
-            report(AppReport("first", Unavailable("Play report bucket", BUCKET_WEEK)))
+            report(app("first", Unavailable("Play report bucket", BUCKET_WEEK)))
         )
         self.assertEqual(
             lines[-1],
@@ -480,7 +647,7 @@ class SummaryTest(unittest.TestCase):
     def test_failures_show_in_their_column_and_as_problems(self):
         failure = Failure(source="Play report bucket", error="403 Forbidden")
         self.assertEqual(
-            summary(report(AppReport("first", failure))),
+            summary(report(app("first", failure))),
             [
                 "Weekly app report, 26 Oct to 1 Nov 2026",
                 "",
@@ -496,8 +663,8 @@ class SummaryTest(unittest.TestCase):
         columns = (NEW_INSTALLS, installs(Better.DOWN))
         lines = summary(
             report(
-                AppReport("first", growth(value=69, previous=52)),
-                AppReport("second", growth(value=40, previous=50)),
+                app("first", growth(value=69, previous=52)),
+                app("second", growth(value=40, previous=50)),
             ),
             columns,
         )

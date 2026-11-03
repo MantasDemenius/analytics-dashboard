@@ -78,15 +78,23 @@ def attempt[T](source: str, build: Callable[[], T]) -> T | Failure:
         return Failure(source, str(error) or type(error).__name__)
 
 
+def from_bucket[T](
+    app: AppConfig,
+    today: date,
+    period: Period | None,
+    section: Callable[[play_bucket.Reader, str, date, Period | None], T],
+) -> T | Failure:
+    return attempt(
+        play_bucket.SOURCE,
+        lambda: section(play_bucket.bucket_reader(app), app.package, today, period),
+    )
+
+
 def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
     return AppReport(
         app=app.name,
-        growth=attempt(
-            play_bucket.SOURCE,
-            lambda: play_bucket.installs_growth(
-                play_bucket.bucket_reader(app), app.package, today, period
-            ),
-        ),
+        growth=from_bucket(app, today, period, play_bucket.growth),
+        listing=from_bucket(app, today, period, play_bucket.listing),
     )
 
 

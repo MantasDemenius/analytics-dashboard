@@ -5,6 +5,7 @@ from weekly_report.model import (
     AppReport,
     Failure,
     Growth,
+    Listing,
     Metric,
     Point,
     Report,
@@ -35,6 +36,15 @@ class MetricTest(unittest.TestCase):
         metric = Metric(value=3, previous=0)
         self.assertEqual(metric.change, 3)
         self.assertIsNone(metric.percent_change)
+
+    def test_a_rise_from_a_negative_value_is_a_positive_percent(self):
+        metric = Metric(value=-2, previous=-8)
+        self.assertEqual(metric.change, 6)
+        self.assertEqual(metric.percent_change, 75.0)
+
+    def test_a_fall_below_a_negative_value_is_a_negative_percent(self):
+        metric = Metric(value=-12, previous=-8)
+        self.assertEqual(metric.percent_change, -50.0)
 
     def test_series_defaults_to_empty(self):
         self.assertEqual(Metric(value=1, previous=1).series, ())
@@ -107,6 +117,51 @@ class SummedMetricTest(unittest.TestCase):
         self.assertEqual(metric.trend[-1].value, 2)
 
 
+class RatioMetricTest(unittest.TestCase):
+    period = Period(date(2026, 10, 19), date(2026, 10, 20))
+
+    def metric(self, part: dict, whole: dict, data_to=None):
+        coverage = Coverage(self.period, data_to)
+        return Metric.ratio(
+            Metric.summed(part, coverage), Metric.summed(whole, coverage)
+        )
+
+    def test_is_the_sum_of_the_parts_over_the_sum_of_the_wholes_as_a_percent(self):
+        part = {date(2026, 10, 19): 1, date(2026, 10, 20): 3}
+        whole = {date(2026, 10, 19): 10, date(2026, 10, 20): 30}
+        self.assertEqual(self.metric(part, whole).value, 10.0)
+
+    def test_a_busy_day_weighs_more_than_a_quiet_one(self):
+        part = {date(2026, 10, 19): 1, date(2026, 10, 20): 0}
+        whole = {date(2026, 10, 19): 2, date(2026, 10, 20): 18}
+        self.assertEqual(self.metric(part, whole).value, 5.0)
+
+    def test_the_previous_period_is_a_ratio_of_its_own_sums(self):
+        part = {date(2026, 10, 17): 2, date(2026, 10, 18): 2}
+        whole = {date(2026, 10, 17): 10, date(2026, 10, 18): 30}
+        metric = self.metric(part, whole)
+        self.assertEqual((metric.value, metric.previous), (0.0, 10.0))
+
+    def test_no_whole_is_zero_not_an_error(self):
+        metric = self.metric({}, {})
+        self.assertEqual((metric.value, metric.previous), (0.0, 0.0))
+
+    def test_the_trend_is_a_ratio_per_period_dated_like_the_parts(self):
+        part = {date(2026, 10, 19): 1}
+        whole = {date(2026, 10, 19): 4, date(2026, 10, 17): 5}
+        metric = self.metric(part, whole)
+        self.assertEqual(len(metric.trend), 12)
+        self.assertEqual(metric.trend[-1], Point(date(2026, 10, 19), 25.0))
+        self.assertEqual(metric.trend[-2].value, 0.0)
+        self.assertEqual(metric.trend[0].day, self.period.trailing(12)[0].start)
+
+    def test_a_partly_covered_range_uses_the_covered_days_of_both_sums(self):
+        part = {date(2026, 10, 19): 1, date(2026, 10, 20): 50}
+        whole = {date(2026, 10, 19): 5, date(2026, 10, 20): 50}
+        metric = self.metric(part, whole, data_to=date(2026, 10, 19))
+        self.assertEqual(metric.value, 20.0)
+
+
 class LevelMetricTest(unittest.TestCase):
     period = Period(date(2026, 10, 19), date(2026, 10, 21))
 
@@ -128,25 +183,36 @@ class LevelMetricTest(unittest.TestCase):
 
 
 class ReportProblemsTest(unittest.TestCase):
-    def growth(self):
-        return Growth(coverage=Coverage(WEEK), installs=Metric(value=1, previous=1))
+    def app(self, name="first", growth=None, listing=None):
+        metric = Metric(value=1, previous=1)
+        return AppReport(
+            name,
+            growth or Growth(Coverage(WEEK), metric, metric, metric),
+            listing or Listing(Coverage(WEEK), metric, metric, metric),
+        )
 
     def test_no_failures_means_no_problems(self):
-        report = Report(period=WEEK, apps=(AppReport("first", self.growth()),))
+        report = Report(period=WEEK, apps=(self.app(),))
         self.assertEqual(report.problems, [])
 
     def test_every_failing_section_is_a_problem_named_by_app(self):
         failure = Failure(source="Play report bucket", error="403 Forbidden")
         report = Report(
             period=WEEK,
-            apps=(AppReport("first", self.growth()), AppReport("second", failure)),
+            apps=(self.app(), self.app("second", growth=failure)),
         )
         self.assertEqual(report.problems, [("second", failure)])
 
+    def test_two_failing_sections_of_one_app_are_two_problems(self):
+        failure = Failure(source="Play report bucket", error="403 Forbidden")
+        report = Report(period=WEEK, apps=(self.app(growth=failure, listing=failure),))
+        self.assertEqual(report.problems, [("first", failure), ("first", failure)])
+
     def test_a_section_the_range_does_not_reach_is_not_a_problem(self):
+        unavailable = Unavailable("Play report bucket", WEEK)
         report = Report(
             period=WEEK,
-            apps=(AppReport("first", Unavailable("Play report bucket", WEEK)),),
+            apps=(self.app(growth=unavailable, listing=unavailable),),
         )
         self.assertEqual(report.problems, [])
 
