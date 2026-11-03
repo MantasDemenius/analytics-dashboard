@@ -13,6 +13,9 @@ Feedback covers bug reports with and without an email, app ID, error and message
 and without a message and liked items, every star level, a rise and a fall in each kind, a long
 list, a range with data ending inside it and a range with no reports. The email and app ID show
 on screen and are left out of the PDF.
+AdMob is built from made-up API shaped rows through the real parser: several ad units of
+different formats with unit days missing, a currency other than USD, a long unit list, data
+ending inside the range, an account with no traffic and 24 months of earnings.
 
 Run: uv run python scripts/render_sample.py
 """
@@ -23,6 +26,7 @@ from pathlib import Path
 
 from weekly_report import pdf
 from weekly_report.model import (
+    AdMob,
     AppReport,
     Crashlytics,
     ErrorKind,
@@ -46,6 +50,7 @@ from weekly_report.model import (
 )
 from weekly_report.periods import TREND_PERIODS, Coverage, Period
 from weekly_report.render import render, write
+from weekly_report.sources import admob
 from weekly_report.sources.crashlytics import sorted_issues
 
 OUT_DIR = Path("out/sample")
@@ -55,6 +60,8 @@ LISTING_WEEK = BUCKET_WEEK.previous()
 VITALS_WEEK = BUCKET_WEEK
 CRASHLYTICS_WEEK = REPORT_WEEK
 FEEDBACK_WEEK = REPORT_WEEK
+ADMOB_WEEK = REPORT_WEEK
+ADMOB_TODAY = date(2026, 11, 2)
 
 
 def swinging(
@@ -471,6 +478,96 @@ def many_feedback() -> tuple[UserReport, ...]:
     return tuple(sorted(reports, key=lambda each: each.at, reverse=True))
 
 
+SAMPLE_UNITS = (
+    ("banner", "Home banner", "banner", 0.9, 5200),
+    ("level", "Level end", "interstitial", 11.5, 900),
+    ("bonus", "Bonus coins", "rewarded", 21.0, 320),
+    ("open", "App open", "app_open", 6.4, 480),
+    ("list", "List native", "native", 3.1, 1400),
+    ("detail", "Detail banner", "banner", 0.7, 2600),
+    ("settings", "Settings banner", "banner", 0.5, 900),
+    ("retry", "Retry rewarded", "rewarded", 17.0, 150),
+    ("exit", "Exit interstitial", "interstitial", 9.0, 260),
+)
+
+
+def unit_rows_between(
+    units: tuple, first: date, last: date, grows: float, gaps: bool
+) -> list[dict]:
+    """API shaped rows: a made-up traffic per unit and day, swinging, growing and, with
+    `gaps`, leaving a day out of every few for each unit."""
+    rows = []
+    for index, (unit, name, format_, ecpm, base) in enumerate(units):
+        for offset in range((last - first).days + 1):
+            if gaps and (offset + index) % (3 + index % 3) == 0:
+                continue
+            day = first + timedelta(days=offset)
+            swing = 1 + 0.25 * math.sin(offset / 5 + index) + grows * offset
+            impressions = max(1, round(base * swing))
+            micros = round(impressions * ecpm * (1 + 0.1 * math.sin(offset)) * 1000)
+            rows.append(
+                {
+                    "row": {
+                        "dimensionValues": {
+                            "DATE": {"value": f"{day:%Y%m%d}"},
+                            "AD_UNIT": {"value": unit, "displayLabel": name},
+                            "FORMAT": {"value": format_},
+                        },
+                        "metricValues": {
+                            "ESTIMATED_EARNINGS": {"microsValue": str(micros)},
+                            "IMPRESSIONS": {"integerValue": str(impressions)},
+                        },
+                    }
+                }
+            )
+    return rows
+
+
+def month_rows_between(first: date, last: date, base: float) -> list[dict]:
+    rows = []
+    month = first
+    for number in range(24):
+        if month > last:
+            break
+        micros = round(base * (1 + 0.04 * number + 0.15 * math.sin(number / 2)) * 1e6)
+        rows.append(
+            {
+                "row": {
+                    "dimensionValues": {"MONTH": {"value": f"{month:%Y%m}"}},
+                    "metricValues": {
+                        "ESTIMATED_EARNINGS": {"microsValue": str(micros)},
+                        "IMPRESSIONS": {"integerValue": "1000"},
+                    },
+                }
+            }
+        )
+        month = (month + timedelta(days=32)).replace(day=1)
+    return rows
+
+
+def admob_section(
+    units: tuple,
+    currency: str,
+    today: date = ADMOB_TODAY,
+    grows: float = 0.004,
+    gaps: bool = True,
+    monthly_base: float = 1800,
+) -> AdMob | Unavailable:
+    def read(body: dict) -> list[dict]:
+        spec = body["reportSpec"]
+        first = date(**spec["dateRange"]["startDate"])
+        last = date(**spec["dateRange"]["endDate"])
+        rows = (
+            unit_rows_between(units, first, last, grows, gaps)
+            if "DATE" in spec["dimensions"]
+            else month_rows_between(first, last, monthly_base)
+        )
+        header = {"localizationSettings": {"currencyCode": currency}}
+        return [{"header": header}, *rows, {"footer": {}}]
+
+    return admob.admob(read, today, ADMOB_WEEK)
+
+
 def flat_week() -> dict[date, float]:
     daily = swinging(BUCKET_WEEK, base=30, slope=0.05, this_week=34)
     previous = BUCKET_WEEK.previous().days()
@@ -506,6 +603,7 @@ def sample() -> Report:
                 vitals_section(crash=(0.42, 0.35), anr=(0.21, 0.24)),
                 crashlytics_section(98.2, 97.4, EXAMPLE_ISSUES),
                 feedback_section(EXAMPLE_FEEDBACK, (5, 5, 2, 7), unhandled=6),
+                admob_section(SAMPLE_UNITS[:4], "EUR"),
             ),
             AppReport(
                 "Second App",
@@ -534,6 +632,13 @@ def sample() -> Report:
                     unhandled=41,
                     data_to=date(2026, 10, 30),
                 ),
+                admob_section(
+                    SAMPLE_UNITS,
+                    "SEK",
+                    today=date(2026, 10, 31),
+                    grows=-0.003,
+                    monthly_base=95000,
+                ),
             ),
             AppReport(
                 "Third App",
@@ -543,6 +648,7 @@ def sample() -> Report:
                 vitals_section(crash=(1.09, 1.4), anr=(0.3, 0.3)),
                 crashlytics_section(99.1, 0, (), trend=1),
                 feedback_section((), (0, 0, 3, 1), unhandled=0),
+                admob_section((), "USD"),
             ),
             AppReport(
                 "Fourth App",
@@ -552,6 +658,7 @@ def sample() -> Report:
                 Failure("Play vitals", "403 Forbidden"),
                 Failure("Crashlytics", "403 Forbidden"),
                 Failure("Firestore feedback", "403 Forbidden"),
+                Failure("AdMob", "403 Forbidden"),
             ),
             AppReport(
                 "Fifth App",
@@ -561,6 +668,7 @@ def sample() -> Report:
                 Unavailable("Play vitals", VITALS_WEEK),
                 Unavailable("Crashlytics", CRASHLYTICS_WEEK),
                 Unavailable("Firestore feedback", FEEDBACK_WEEK),
+                Unavailable("AdMob", ADMOB_WEEK),
             ),
         ),
     )

@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 from weekly_report.mail import message, subject
 from weekly_report.model import (
+    AdMob,
     AppReport,
     Crashlytics,
     Feedback,
@@ -52,6 +53,15 @@ REPORT = Report(
                 suggestions=Metric(3, 2),
                 unhandled=4,
                 reports=(),
+            ),
+            AdMob(
+                Coverage(WEEK),
+                "USD",
+                earnings=Metric(12.34, 10.0),
+                impressions=Metric(5000, 4000),
+                ecpm=Metric(2.468, 2.5),
+                units=(),
+                monthly=(),
             ),
         ),
     ),

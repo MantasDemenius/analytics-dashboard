@@ -18,6 +18,7 @@ from jinja2 import Environment, PackageLoader, StrictUndefined, select_autoescap
 from weekly_report.model import (
     ANR_THRESHOLD,
     CRASH_THRESHOLD,
+    AdMob,
     AppReport,
     Failure,
     Metric,
@@ -37,6 +38,17 @@ BLUE = "#2a78d6"
 ORANGE = "#d9622b"
 TEAL = "#1a8f72"
 GOLD = "#c98a12"
+UNIT_COLOURS = (
+    BLUE,
+    ORANGE,
+    TEAL,
+    GOLD,
+    "#8e5bd6",
+    "#c2457a",
+    "#5b6b7b",
+    "#7fa32a",
+    "#2fb0c9",
+)
 
 
 def signed(number: float, digits: int = 0, unit: str = "") -> str:
@@ -123,12 +135,32 @@ def stars_change(metric: Metric) -> str:
     return signed(metric.change, 2, " stars")
 
 
+def money(number: float) -> str:
+    return f"{number:,.2f}"
+
+
+def money_changed(metric: Metric) -> bool:
+    return round(metric.change, 2) != 0
+
+
+def money_change(metric: Metric) -> str:
+    if not money_changed(metric):
+        return "no change"
+    if metric.percent_change is None:
+        return signed(metric.change, 2)
+    return f"{signed(metric.change, 2)} ({signed(metric.percent_change, 1, '%')})"
+
+
 def has_both(metric: Metric) -> bool:
     return metric.value > 0 and metric.previous > 0
 
 
 def no_note(section: Any) -> str:
     return ""
+
+
+def currency_of(admob: AdMob) -> str:
+    return f" {admob.currency}"
 
 
 class Better(Enum):
@@ -142,7 +174,8 @@ class Headline:
     """A number one section shows as a number card or an at a glance column.
 
     `section` names the AppReport field holding the section, whose `coverage` gives the range;
-    `metric` picks the number from it, and `shown` and `change` format it.
+    `metric` picks the number from it, and `shown` and `change` format it; `unit` is appended
+    to every value `shown` formats.
     """
 
     label: str
@@ -154,6 +187,7 @@ class Headline:
     change: Callable[[Metric], str] = change_text
     comparable: Callable[[Metric], bool] = lambda metric: True
     note: Callable[[Any], str] = no_note
+    unit: Callable[[Any], str] = no_note
 
 
 @dataclass(frozen=True)
@@ -181,6 +215,16 @@ class Figure:
 
 
 @dataclass(frozen=True)
+class Cell:
+    """A number and its change as a table cell shows them."""
+
+    value: str
+    change: str
+    direction: str
+    verdict: str
+
+
+@dataclass(frozen=True)
 class Missing:
     label: str
     range: str
@@ -202,6 +246,16 @@ def verdict(change: float, better: Better) -> str:
     return "better" if (change > 0) == (better is Better.UP) else "worse"
 
 
+def cell(headline: Headline, metric: Metric) -> Cell:
+    change = metric.change if headline.comparable(metric) else 0
+    return Cell(
+        headline.shown(metric.value),
+        headline.change(metric),
+        direction(change),
+        verdict(change, headline.better),
+    )
+
+
 def figure(headline: Headline, section: Any) -> Figure | Missing:
     """How one headline shows for one app's section, or why it cannot."""
     if isinstance(section, Failure):
@@ -212,14 +266,15 @@ def figure(headline: Headline, section: Any) -> Figure | Missing:
         )
     metric = headline.metric(section)
     coverage = section.coverage
-    change = metric.change if headline.comparable(metric) else 0
+    shown = cell(headline, metric)
+    unit = headline.unit(section)
     return Figure(
         label=headline.label,
-        value=headline.shown(metric.value),
-        change=headline.change(metric),
-        direction=direction(change),
-        verdict=verdict(change, headline.better),
-        was=f"{headline.shown(metric.previous)} {before(coverage.covered.length)}",
+        value=shown.value + unit,
+        change=shown.change,
+        direction=shown.direction,
+        verdict=shown.verdict,
+        was=f"{headline.shown(metric.previous)}{unit} {before(coverage.covered.length)}",
         range=coverage.label(),
         periods=periods_of(coverage.period.length),
         trend=metric.trend,
@@ -316,6 +371,30 @@ BUG_REPORTS = Headline(
 FEEDBACK_MESSAGES = Headline(
     "Feedback", "feedback", lambda feedback: feedback.suggestions, Better.NEITHER, TEAL
 )
+AD_EARNINGS = Headline(
+    "Ad earnings",
+    "admob",
+    lambda admob: admob.earnings,
+    Better.UP,
+    shown=money,
+    change=money_change,
+    comparable=money_changed,
+    unit=currency_of,
+    note=lambda admob: "Estimated, Pacific Time days",
+)
+AD_IMPRESSIONS = Headline(
+    "Impressions", "admob", lambda admob: admob.impressions, Better.UP
+)
+AD_ECPM = Headline(
+    "eCPM",
+    "admob",
+    lambda admob: admob.ecpm,
+    Better.UP,
+    shown=money,
+    change=money_change,
+    comparable=money_changed,
+    unit=currency_of,
+)
 CARDS = (
     NEW_INSTALLS,
     UNINSTALLS,
@@ -324,16 +403,26 @@ CARDS = (
     STORE_RATING,
     PLAY_CRASH_RATE,
     CRASH_FREE_USERS,
+    AD_EARNINGS,
 )
-GLANCE = (NET_GROWTH, STORE_RATING, PLAY_CRASH_RATE, CRASH_FREE_USERS, NEW_FEEDBACK)
+GLANCE = (
+    NET_GROWTH,
+    STORE_RATING,
+    PLAY_CRASH_RATE,
+    CRASH_FREE_USERS,
+    NEW_FEEDBACK,
+    AD_EARNINGS,
+)
 RATINGS_FIGURES = (NEW_RATINGS_AVERAGE, NEW_RATINGS)
 FEEDBACK_FIGURES = (BUG_REPORTS, FEEDBACK_MESSAGES)
+ADMOB_FIGURES = (AD_EARNINGS, AD_IMPRESSIONS, AD_ECPM)
 SECTIONS = (
     Section("growth", "Play: growth", "growth.html.j2"),
     Section("reviews", "Play: ratings and reviews", "reviews.html.j2"),
     Section("vitals", "Play: vitals", "vitals.html.j2"),
     Section("crashlytics", "Crashlytics: issues", "crashlytics.html.j2"),
     Section("feedback", "User feedback", "feedback.html.j2"),
+    Section("admob", "AdMob: ad earnings", "admob.html.j2"),
 )
 VITAL_BARS = (
     ("Crash rate", PLAY_CRASH_RATE, CRASH_THRESHOLD),
@@ -395,6 +484,35 @@ class Series:
     colour: str = BLUE
 
 
+@dataclass(frozen=True)
+class UnitRow:
+    name: str
+    formats: tuple[str, ...]
+    earnings: Cell
+    impressions: Cell
+    ecpm: Cell
+
+
+def unit_rows(admob: AdMob) -> list[UnitRow]:
+    return [
+        UnitRow(
+            unit.name,
+            unit.formats,
+            cell(AD_EARNINGS, unit.earnings),
+            cell(AD_IMPRESSIONS, unit.impressions),
+            cell(AD_ECPM, unit.ecpm),
+        )
+        for unit in admob.units
+    ]
+
+
+def unit_series(admob: AdMob) -> tuple[Series, ...]:
+    return tuple(
+        Series(unit.name, unit.earnings.trend, UNIT_COLOURS[index % len(UNIT_COLOURS)])
+        for index, unit in enumerate(admob.units)
+    )
+
+
 def sparkline(points: tuple[Point, ...], colour: str) -> dict:
     return {
         "type": "line",
@@ -425,8 +543,8 @@ def sparkline(points: tuple[Point, ...], colour: str) -> dict:
     }
 
 
-def axes() -> dict:
-    return {
+def axes(whole_numbers: bool = True) -> dict:
+    scales = {
         "x": {
             "grid": {"display": False},
             "ticks": {"maxRotation": 0, "autoSkipPadding": 10},
@@ -439,23 +557,34 @@ def axes() -> dict:
             "ticks": {"maxTicksLimit": 6, "padding": 6, "precision": 0},
         },
     }
+    if not whole_numbers:
+        del scales["y"]["ticks"]["precision"]
+    return scales
 
 
 def legend(series: tuple[Series, ...]) -> dict:
     return {"display": len(series) > 1, "position": "top", "align": "start"}
 
 
-def daily_bars(*series: Series) -> dict:
+def bar_chart(
+    series: tuple[Series, ...],
+    labels: list[str],
+    stacked: bool = False,
+    whole_numbers: bool = True,
+) -> dict:
+    scales = axes(whole_numbers)
+    if stacked:
+        scales["x"]["stacked"] = scales["y"]["stacked"] = True
     return {
         "type": "bar",
         "data": {
-            "labels": [day_label(point) for point in series[0].points],
+            "labels": labels,
             "datasets": [
                 {
                     "label": each.label,
                     "data": [point.value for point in each.points],
                     "backgroundColor": each.colour,
-                    "borderRadius": 4,
+                    "borderRadius": 0 if stacked else 4,
                     "borderSkipped": "start",
                     "maxBarThickness": 34,
                 }
@@ -465,9 +594,24 @@ def daily_bars(*series: Series) -> dict:
         "options": {
             "interaction": {"mode": "index", "intersect": False},
             "plugins": {"legend": legend(series)},
-            "scales": axes(),
+            "scales": scales,
         },
     }
+
+
+def daily_bars(*series: Series) -> dict:
+    return bar_chart(series, [day_label(point) for point in series[0].points])
+
+
+def stacked_bars(*series: Series) -> dict:
+    """One layer per series, each period's money stacked into one bar."""
+    labels = [short_day(point.day) for point in series[0].points]
+    return bar_chart(series, labels, stacked=True, whole_numbers=False)
+
+
+def monthly_bars(series: Series) -> dict:
+    labels = [f"{point.day:%b %Y}" for point in series.points]
+    return bar_chart((series,), labels, whole_numbers=False)
 
 
 def trend_lines(*series: Series) -> dict:
@@ -571,10 +715,16 @@ def render(
         "ORANGE": ORANGE,
         "sparkline": sparkline,
         "daily_bars": daily_bars,
+        "stacked_bars": stacked_bars,
+        "monthly_bars": monthly_bars,
         "trend_lines": trend_lines,
         "star_bars": star_bars,
         "ratings_figures": RATINGS_FIGURES,
         "feedback_figures": FEEDBACK_FIGURES,
+        "admob_figures": ADMOB_FIGURES,
+        "unit_rows": unit_rows,
+        "unit_series": unit_series,
+        "BLUE": BLUE,
         "figures": figures,
         "vitals_bars": bars,
     }

@@ -316,6 +316,24 @@ scope `admob.report`), for the last 7 days:
   missing unit days with zero.
 - **Earnings growth over time needs no history of our own:** grouped by `MONTH`, the API returned
   27 months back.
+- **Built as** (2026-11-03, `sources/admob.py`, checked with real calls): the metrics asked for are
+  `ESTIMATED_EARNINGS` and `IMPRESSIONS` only; eCPM is earnings over impressions times 1000 from
+  the sums of the period, so it also holds for a unit and for the 12 period trend. One daily call
+  covers the 12 periods of the trend (305 days by 2 units came back as 308 rows in one response,
+  no paging), and one monthly call the 24 complete calendar months up to the covered end: the
+  month the range ends in counts only when the range ends on its last day, and a month with no row
+  is left out rather than shown as zero. Ad units with no row in the 12 periods do not appear.
+- **Response shape:** `networkReport.generate` returns a list of messages: one `header` (it holds
+  `localizationSettings.currencyCode` even when there are no rows), the `row`s, and a `footer`
+  (`{}` when empty). `DATE` values are `YYYYMMDD` and `MONTH` values `YYYYMM`. A daily row also
+  carries an `APP` dimension (value and `displayLabel`) that was not asked for. `MONTH` accepts
+  mid month dates.
+- **The report is the whole AdMob account, not one app:** it is read once and every app shows the
+  same section. With one app that is right. When a second app joins, each needs its own filter:
+  the `APP` value is AdMob's app id, not the package, so it would be a new key in the app config.
+- **Unverified:** days are Pacific, but "yesterday" is the local date minus one. A Monday 08:00
+  run in a zone ahead of Pacific by under 10 hours can reach a Pacific Sunday that is still
+  running, so its last day may be partial. Estimated earnings are also revised by AdMob later.
 
 ## Report layout
 

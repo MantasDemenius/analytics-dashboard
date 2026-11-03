@@ -279,6 +279,36 @@ class Feedback:
 
 
 @dataclass(frozen=True)
+class AdUnit:
+    """One ad unit's earnings in the account currency, impressions and eCPM, over the days
+    the whole account's report covers, a day without a row counting as zero."""
+
+    name: str
+    formats: tuple[str, ...]
+    earnings: Metric
+    impressions: Metric
+    ecpm: Metric
+
+
+@dataclass(frozen=True)
+class AdMob:
+    """The AdMob account's earnings in `currency`, in total and per ad unit.
+
+    `ecpm` is earnings per 1000 impressions from the sums, never an average of daily values.
+    `monthly` holds the earnings of the last complete calendar months, each dated by its first
+    day, oldest first.
+    """
+
+    coverage: Coverage
+    currency: str
+    earnings: Metric
+    impressions: Metric
+    ecpm: Metric
+    units: tuple[AdUnit, ...]
+    monthly: tuple[Point, ...]
+
+
+@dataclass(frozen=True)
 class AppReport:
     """One app's sections. Every field after `app` is a section or the Failure that replaced it."""
 
@@ -289,6 +319,7 @@ class AppReport:
     vitals: Vitals | Unavailable | Failure
     crashlytics: Crashlytics | Unavailable | Failure
     feedback: Feedback | Unavailable | Failure
+    admob: AdMob | Unavailable | Failure
 
     def failures(self) -> list[Failure]:
         sections = (getattr(self, f.name) for f in fields(self) if f.name != "app")

@@ -5,6 +5,8 @@ from datetime import UTC, date, datetime, timedelta
 
 from weekly_report import render as renderer
 from weekly_report.model import (
+    AdMob,
+    AdUnit,
     AppReport,
     Crashlytics,
     ErrorKind,
@@ -217,6 +219,62 @@ def feedback(
     )
 
 
+ADMOB_WEEK = Period(date(2026, 10, 26), date(2026, 11, 1))
+
+
+def ad_unit(
+    name="Home banner",
+    formats=("banner",),
+    earnings=(6.0, 5.0),
+    impressions=(1200, 1000),
+    ecpm=(5.0, 5.0),
+    stack=(5.0, 6.0),
+):
+    return AdUnit(
+        name,
+        tuple(formats),
+        earnings=Metric(
+            *earnings,
+            trend=tuple(
+                Point(date(2026, 8, 10) + timedelta(weeks=week), value)
+                for week, value in enumerate([*[0] * 10, *stack])
+            ),
+        ),
+        impressions=Metric(*impressions),
+        ecpm=Metric(*ecpm),
+    )
+
+
+MONTHS = (
+    Point(date(2026, 8, 1), 120.5),
+    Point(date(2026, 9, 1), 130.0),
+    Point(date(2026, 10, 1), 90.25),
+)
+
+
+def admob(
+    earnings=12.34,
+    earnings_before=10.0,
+    impressions=5000,
+    impressions_before=4000,
+    ecpm=2.468,
+    ecpm_before=2.5,
+    currency="USD",
+    units=None,
+    monthly=MONTHS,
+    coverage=None,
+):
+    return AdMob(
+        coverage=coverage or Coverage(ADMOB_WEEK),
+        currency=currency,
+        earnings=Metric(earnings, earnings_before, trend=weekly_trend(earnings)),
+        impressions=Metric(impressions, impressions_before),
+        ecpm=Metric(ecpm, ecpm_before),
+        units=tuple((ad_unit(),) if units is None else units),
+        monthly=tuple(monthly),
+    )
+
+
 def app(
     name,
     growth_section=None,
@@ -225,6 +283,7 @@ def app(
     vitals_section=None,
     crashlytics_section=None,
     feedback_section=None,
+    admob_section=None,
 ):
     return AppReport(
         name,
@@ -234,6 +293,7 @@ def app(
         vitals() if vitals_section is None else vitals_section,
         crashlytics() if crashlytics_section is None else crashlytics_section,
         feedback() if feedback_section is None else feedback_section,
+        admob() if admob_section is None else admob_section,
     )
 
 
@@ -284,6 +344,7 @@ def cards(html: str) -> list[str]:
 
 
 NO_REVIEWS = Unavailable("Play reviews", REVIEWS_WEEK)
+NO_ADMOB = Unavailable("AdMob", ADMOB_WEEK)
 
 
 def installs(better):
@@ -488,6 +549,7 @@ class NumberCardTest(unittest.TestCase):
                     "first",
                     Failure("Play report bucket", "boom"),
                     reviews_section=NO_REVIEWS,
+                    admob_section=NO_ADMOB,
                 )
             )
         )
@@ -504,6 +566,7 @@ class NumberCardTest(unittest.TestCase):
                     "first",
                     Unavailable("Play report bucket", BUCKET_WEEK),
                     reviews_section=NO_REVIEWS,
+                    admob_section=NO_ADMOB,
                 )
             )
         )
@@ -573,6 +636,7 @@ class GrowthSectionTest(unittest.TestCase):
                     "first",
                     Unavailable("Play report bucket", BUCKET_WEEK),
                     reviews_section=NO_REVIEWS,
+                    admob_section=NO_ADMOB,
                 )
             )
         )
@@ -622,6 +686,7 @@ class DefaultCardsTest(unittest.TestCase):
                 "Store rating",
                 "Play crash rate",
                 "Crash free users",
+                "Ad earnings",
             ],
         )
 
@@ -744,7 +809,7 @@ class StoreRatingCardTest(unittest.TestCase):
     def test_the_email_line_says_the_rating_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-4], "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better"
+            lines[-5], "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better"
         )
 
 
@@ -795,7 +860,7 @@ class CrashRateCardTest(unittest.TestCase):
     def test_the_email_line_says_the_rate_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-3],
+            lines[-4],
             "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
         )
 
@@ -803,7 +868,7 @@ class CrashRateCardTest(unittest.TestCase):
 class VitalsSectionTest(unittest.TestCase):
     def section(self, **kwargs):
         html = renderer.render(report(app("first", vitals_section=vitals(**kwargs))))
-        return part(html, 'id="app-0-vitals"', "</section>\n</div>")
+        return part(html, 'id="app-0-vitals"', 'id="app-0-crashlytics"')
 
     def gauges(self, section):
         return section.split('<div class="vital">')[1:]
@@ -945,14 +1010,14 @@ class CrashFreeCardTest(unittest.TestCase):
     def test_the_email_line_says_the_percent_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-2],
+            lines[-3],
             "  Crash free users, 26 Oct to 1 Nov 2026: 97.50%, +1.50 pts, better",
         )
 
     def test_the_at_a_glance_table_has_crash_free_users_before_new_feedback(self):
         glance = part(renderer.render(report(app("first"))), '<section class="glance"')
         self.assertEqual(
-            re.findall(r"<th>(.*?)</th>", glance)[-3:],
+            re.findall(r"<th>(.*?)</th>", glance)[-4:-1],
             ["Play crash rate", "Crash free users", "New feedback"],
         )
 
@@ -961,7 +1026,7 @@ class CrashlyticsSectionTest(unittest.TestCase):
     def section(self, issues=(), **kwargs):
         section = crashlytics(issues=issues, **kwargs)
         html = renderer.render(report(app("first", crashlytics_section=section)))
-        return part(html, 'id="app-0-crashlytics"', "</section>\n</div>")
+        return part(html, 'id="app-0-crashlytics"', 'id="app-0-feedback"')
 
     def rows(self, section):
         return section.split('<tr class="issue')[1:]
@@ -1089,7 +1154,7 @@ class CrashlyticsSectionTest(unittest.TestCase):
 class ReviewsSectionTest(unittest.TestCase):
     def section(self, **kwargs):
         html = renderer.render(report(app("first", reviews_section=reviews(**kwargs))))
-        return html, part(html, 'id="app-0-reviews"', "</section>\n</div>")
+        return html, part(html, 'id="app-0-reviews"', 'id="app-0-vitals"')
 
     def test_shows_its_own_range(self):
         _, section = self.section()
@@ -1254,6 +1319,7 @@ class DefaultGlanceTest(unittest.TestCase):
                 "Play crash rate",
                 "Crash free users",
                 "New feedback",
+                "Ad earnings",
             ],
         )
         self.assertIn(">+49<", glance)
@@ -1274,6 +1340,7 @@ class DefaultGlanceTest(unittest.TestCase):
                 "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
                 "  Crash free users, 26 Oct to 1 Nov 2026: 97.50%, +1.50 pts, better",
                 "  New feedback, 26 Oct to 1 Nov 2026: 5, +2 (+66.7%)",
+                "  Ad earnings, 26 Oct to 1 Nov 2026: 12.34 USD, +2.34 (+23.4%), better",
             ],
         )
 
@@ -1281,8 +1348,8 @@ class DefaultGlanceTest(unittest.TestCase):
         failure = Failure("Play report bucket", "403 Forbidden")
         lines = renderer.summary(report(app("first", listing_section=failure)))
         self.assertIn("  first, Play report bucket: 403 Forbidden", lines)
-        self.assertEqual(lines[-5][:12], "  Net growth")
-        self.assertNotIn("see Problems", "".join(lines[-5:]))
+        self.assertEqual(lines[-6][:12], "  Net growth")
+        self.assertNotIn("see Problems", "".join(lines[-6:-1]))
 
 
 class FeedbackSectionTest(unittest.TestCase):
@@ -1292,7 +1359,7 @@ class FeedbackSectionTest(unittest.TestCase):
         )
 
     def section(self, **kwargs):
-        return part(self.html(**kwargs), 'id="app-0-feedback"', "</section>\n</div>")
+        return part(self.html(**kwargs), 'id="app-0-feedback"', 'id="app-0-admob"')
 
     def cards(self, *reports, **kwargs):
         return self.section(reports=reports, **kwargs).split("<article")[1:]
@@ -1479,7 +1546,7 @@ class NewFeedbackGlanceTest(unittest.TestCase):
     def test_the_email_line_says_the_count_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-1], "  New feedback, 26 Oct to 1 Nov 2026: 5, +2 (+66.7%)"
+            lines[-2], "  New feedback, 26 Oct to 1 Nov 2026: 5, +2 (+66.7%)"
         )
 
     def test_the_email_line_carries_no_report_text(self):
@@ -1495,7 +1562,7 @@ class NewFeedbackGlanceTest(unittest.TestCase):
         failure = Failure("Firestore feedback", "403 Forbidden")
         lines = renderer.summary(report(app("first", feedback_section=failure)))
         self.assertEqual(
-            lines[-1], "  New feedback: Firestore feedback failed, see Problems"
+            lines[-2], "  New feedback: Firestore feedback failed, see Problems"
         )
 
 
@@ -1582,6 +1649,203 @@ class PageTest(unittest.TestCase):
         ]
         self.assertEqual(len(forced), 1)
         self.assertLess(html.index("@media print"), forced[0])
+
+
+class AdEarningsCardTest(unittest.TestCase):
+    def card(self, section):
+        html = renderer.render(report(app("first", admob_section=section)))
+        return cards(html)[-1]
+
+    def test_is_the_last_default_card_and_the_last_glance_column(self):
+        html = renderer.render(report(app("first")))
+        labels = re.findall(
+            r'<span class="l">(.*?)</span>', part(html, '<div class="kpis">')
+        )
+        self.assertEqual(labels[-1], "Ad earnings")
+        glance = part(html, '<section class="glance"')
+        self.assertEqual(re.findall(r"<th>(.*?)</th>", glance)[-1], "Ad earnings")
+
+    def test_shows_the_earnings_in_the_account_currency_with_its_change(self):
+        card = self.card(admob(earnings=12.34, earnings_before=10.0))
+        self.assertIn(">12.34 USD<", card)
+        self.assertIn(
+            '<span class="d better"><span class="arr">▲</span>+2.34 (+23.4%)', card
+        )
+        self.assertIn("10.00 USD the week before", card)
+
+    def test_names_whatever_currency_the_account_has(self):
+        self.assertIn(">12.34 EUR<", self.card(admob(currency="EUR")))
+
+    def test_groups_thousands(self):
+        card = self.card(admob(earnings=1234.5, earnings_before=1000))
+        self.assertIn(">1,234.50 USD<", card)
+
+    def test_a_fall_is_worse_and_no_change_is_flat(self):
+        fall = self.card(admob(earnings=8.5, earnings_before=10))
+        flat = self.card(admob(earnings=10, earnings_before=10))
+        self.assertIn(
+            '<span class="d worse"><span class="arr">▼</span>−1.50 (−15.0%)', fall
+        )
+        self.assertIn(
+            '<span class="d neutral"><span class="arr">■</span>no change', flat
+        )
+
+    def test_a_rise_from_nothing_shows_no_percent(self):
+        card = self.card(admob(earnings=3.2, earnings_before=0))
+        self.assertIn("▲</span>+3.20<", card)
+
+    def test_a_change_under_a_cent_is_no_change(self):
+        card = self.card(admob(earnings=10.004, earnings_before=10))
+        self.assertIn("no change", card)
+
+    def test_draws_its_12_period_sparkline(self):
+        html = renderer.render(
+            report(app("first", admob_section=admob(earnings=12.34)))
+        )
+        self.assertEqual(values(chart(html, "Ad earnings, 12 weeks"))[-1], 12.34)
+
+    def test_a_failed_source_fails_the_card(self):
+        card = self.card(Failure("AdMob", "403 Forbidden"))
+        self.assertIn("AdMob failed", card)
+
+    def test_an_unreachable_range_says_so(self):
+        card = self.card(Unavailable("AdMob", ADMOB_WEEK))
+        self.assertIn("not available for this range", card)
+
+    def test_the_email_line_says_the_earnings_and_their_change(self):
+        lines = renderer.summary(report(app("first")))
+        self.assertEqual(
+            lines[-1],
+            "  Ad earnings, 26 Oct to 1 Nov 2026: 12.34 USD, +2.34 (+23.4%), better",
+        )
+
+    def test_a_partly_covered_range_says_where_the_data_ends(self):
+        coverage = Coverage(ADMOB_WEEK, date(2026, 10, 30))
+        page = report(app("first", admob_section=admob(coverage=coverage)))
+        self.assertIn(
+            "26 Oct to 1 Nov 2026, data to 30 Oct: 12.34 USD",
+            renderer.summary(page)[-1],
+        )
+
+
+class AdMobSectionTest(unittest.TestCase):
+    STACK = "Ad earnings per ad unit over the last 12 weeks"
+
+    def html(self, **kwargs):
+        return renderer.render(report(app("first", admob_section=admob(**kwargs))))
+
+    def section(self, **kwargs):
+        return part(self.html(**kwargs), 'id="app-0-admob"', "</section>\n</div>")
+
+    def test_has_a_nav_link_and_names_its_range_and_currency(self):
+        section = self.section(currency="EUR")
+        self.assertIn("26 Oct to 1 Nov 2026", section)
+        self.assertIn("EUR", section)
+        self.assertIn('<a href="#app-0-admob">AdMob: ad earnings</a>', self.html())
+
+    def test_shows_earnings_impressions_and_ecpm_with_their_changes(self):
+        section = self.section()
+        self.assertIn(">12.34 USD<", section)
+        self.assertIn(">5,000<", section)
+        self.assertIn("4,000 the week before", section)
+        self.assertIn(">2.47 USD<", section)
+        self.assertIn("2.50 USD the week before", section)
+
+    def test_a_lower_ecpm_is_worse_and_more_impressions_are_better(self):
+        section = self.section(
+            impressions=5000, impressions_before=4000, ecpm=2.0, ecpm_before=2.5
+        )
+        self.assertIn(
+            '<span class="d better"><span class="arr">▲</span>+1,000 (+25.0%)',
+            section,
+        )
+        self.assertIn(
+            '<span class="d worse"><span class="arr">▼</span>−0.50 (−20.0%)', section
+        )
+
+    def test_lists_every_ad_unit_in_order_with_its_format_and_numbers(self):
+        units = [
+            ad_unit(
+                "Level end", ("interstitial",), (9.5, 7.0), (800, 700), (11.88, 10.0)
+            ),
+            ad_unit(
+                "Home banner",
+                ("banner", "native"),
+                (2.84, 3.0),
+                (4200, 4300),
+                (0.68, 0.7),
+            ),
+        ]
+        section = self.section(units=units)
+        rows = part(section, "<tbody>", "</tbody>").split("<tr")[1:]
+        self.assertEqual(len(rows), 2)
+        self.assertIn("Level end", rows[0])
+        self.assertIn("interstitial", rows[0])
+        self.assertIn(">9.50<", rows[0])
+        self.assertIn("+2.50 (+35.7%)", rows[0])
+        self.assertIn("800", rows[0])
+        self.assertIn(">11.88<", rows[0])
+        self.assertIn("Home banner", rows[1])
+        self.assertIn("banner", rows[1])
+        self.assertIn("native", rows[1])
+        self.assertIn("4,200", rows[1])
+
+    def test_the_unit_name_is_escaped(self):
+        section = self.section(units=[ad_unit("<b>Hot</b> unit")])
+        self.assertNotIn("<b>Hot</b>", section)
+        self.assertIn("&lt;b&gt;Hot&lt;/b&gt; unit", section)
+
+    def test_stacks_12_periods_of_earnings_a_layer_per_unit(self):
+        units = [
+            ad_unit("Level end", stack=(1.0, 2.0)),
+            ad_unit("Home banner", stack=(3.0, 4.0)),
+        ]
+        config = chart(self.html(units=units), self.STACK)
+        self.assertEqual(config["type"], "bar")
+        self.assertEqual(
+            [dataset["label"] for dataset in config["data"]["datasets"]],
+            ["Level end", "Home banner"],
+        )
+        self.assertEqual(len(config["data"]["labels"]), 12)
+        self.assertEqual(config["data"]["datasets"][1]["data"][-2:], [3.0, 4.0])
+        self.assertTrue(config["options"]["scales"]["x"]["stacked"])
+        self.assertTrue(config["options"]["scales"]["y"]["stacked"])
+
+    def test_every_unit_gets_its_own_colour(self):
+        units = [ad_unit(f"Unit {number}") for number in range(6)]
+        config = chart(self.html(units=units), self.STACK)
+        colours = [dataset["backgroundColor"] for dataset in config["data"]["datasets"]]
+        self.assertEqual(len(set(colours)), 6)
+
+    def test_draws_the_earnings_of_every_month_oldest_first(self):
+        config = chart(self.html(), "Ad earnings per month")
+        self.assertEqual(config["data"]["labels"], ["Aug 2026", "Sep 2026", "Oct 2026"])
+        self.assertEqual(values(config), [120.5, 130.0, 90.25])
+
+    def test_draws_no_monthly_chart_without_months(self):
+        self.assertNotIn("Ad earnings per month", self.html(monthly=()))
+
+    def test_a_range_without_ad_traffic_says_so_and_draws_no_stack(self):
+        section = self.section(units=[], earnings=0, earnings_before=0)
+        self.assertIn("No ad traffic in this range.", section)
+        self.assertNotIn(self.STACK, section)
+
+    def test_a_partly_covered_section_says_where_its_data_ends(self):
+        section = self.section(coverage=Coverage(ADMOB_WEEK, date(2026, 10, 30)))
+        self.assertIn("26 Oct to 1 Nov 2026, data to 30 Oct", section)
+
+    def test_a_failed_source_shows_its_error_in_a_full_width_card(self):
+        failure = Failure("AdMob", "403 Forbidden")
+        html = renderer.render(report(app("first", admob_section=failure)))
+        section = part(html, 'id="app-0-admob"')
+        self.assertIn('class="card wide"', section)
+        self.assertIn("AdMob: 403 Forbidden", section)
+
+    def test_an_unreachable_range_says_so_and_is_no_problem(self):
+        unavailable = Unavailable("AdMob", ADMOB_WEEK)
+        html = renderer.render(report(app("first", admob_section=unavailable)))
+        self.assertIn("not available for this range", part(html, 'id="app-0-admob"'))
+        self.assertNotIn('class="problems"', html)
 
 
 class ProblemsTest(unittest.TestCase):

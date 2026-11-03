@@ -1,0 +1,48 @@
+{% import "macros.html.j2" as m with context %}
+{% set periods = section.coverage.period.length | periods_of %}
+<section class="card wide">
+  <header><h3>Ad earnings<span class="sub">estimated, in {{ section.currency }}</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  <div class="pair three">
+  {% for shown in figures(app, admob_figures) %}
+    <div><span class="l">{{ shown.label }}</span>
+      <span class="v">{{ shown.value }}</span>
+      <span>{{ m.change(shown) }}<span class="was">{{ shown.was }}</span></span>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+<section class="card wide issues">
+  <header><h3>Ad units<span class="sub">{{ section.units | length }}</span></h3><span class="sub">{{ section.coverage.label() }}</span></header>
+  {% if section.units %}
+  <table class="issuelist">
+    <thead><tr><th>Ad unit</th><th class="n">Earnings ({{ section.currency }})</th><th class="n">Impressions</th><th class="n">eCPM ({{ section.currency }})</th></tr></thead>
+    <tbody>
+    {% for row in unit_rows(section) %}
+      <tr>
+        <td>
+          <span class="ititle">{{ row.name }}</span>
+          <span class="tags">{% for format in row.formats %}<span class="tag">{{ format }}</span>{% endfor %}</span>
+        </td>
+        <td class="n"><span class="cellv">{{ row.earnings.value }}</span>{{ m.change(row.earnings) }}</td>
+        <td class="n"><span class="cellv">{{ row.impressions.value }}</span>{{ m.change(row.impressions) }}</td>
+        <td class="n"><span class="cellv">{{ row.ecpm.value }}</span>{{ m.change(row.ecpm) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No ad traffic in this range.</p>
+  {% endif %}
+</section>
+{% if section.units %}
+<section class="card">
+  <header><h3>Last {{ trend_periods }} {{ periods }}<span class="sub">earnings per ad unit, {{ section.currency }}</span></h3></header>
+  {{ m.chart(stacked_bars(*unit_series(section)), "Ad earnings per ad unit over the last " ~ trend_periods ~ " " ~ periods, 1.9) }}
+</section>
+{% endif %}
+{% if section.monthly %}
+<section class="card">
+  <header><h3>Earnings by month<span class="sub">{{ section.currency }}</span></h3></header>
+  {{ m.chart(monthly_bars(Series("Earnings", section.monthly)), "Ad earnings per month", 1.9) }}
+</section>
+{% endif %}

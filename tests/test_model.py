@@ -2,6 +2,7 @@ import unittest
 from datetime import date, datetime, timedelta
 
 from weekly_report.model import (
+    AdMob,
     AppReport,
     Crashlytics,
     Failure,
@@ -224,6 +225,7 @@ class ReportProblemsTest(unittest.TestCase):
         vitals=None,
         crashlytics=None,
         feedback=None,
+        admob=None,
     ):
         metric = Metric(value=1, previous=1)
         return AppReport(
@@ -234,6 +236,7 @@ class ReportProblemsTest(unittest.TestCase):
             vitals or Vitals(Coverage(WEEK), metric, metric),
             crashlytics or Crashlytics(Coverage(WEEK), metric, ()),
             feedback or Feedback(Coverage(WEEK), metric, metric, metric, 0, ()),
+            admob or AdMob(Coverage(WEEK), "USD", metric, metric, metric, (), ()),
         )
 
     def test_no_failures_means_no_problems(self):
@@ -273,6 +276,11 @@ class ReportProblemsTest(unittest.TestCase):
         report = Report(period=WEEK, apps=(self.app(feedback=failure),))
         self.assertEqual(report.problems, [("first", failure)])
 
+    def test_a_failing_admob_section_is_a_problem(self):
+        failure = Failure(source="AdMob", error="403 Forbidden")
+        report = Report(period=WEEK, apps=(self.app(admob=failure),))
+        self.assertEqual(report.problems, [("first", failure)])
+
     def test_a_section_the_range_does_not_reach_is_not_a_problem(self):
         unavailable = Unavailable("Play report bucket", WEEK)
         report = Report(
@@ -285,6 +293,7 @@ class ReportProblemsTest(unittest.TestCase):
                     vitals=unavailable,
                     crashlytics=unavailable,
                     feedback=unavailable,
+                    admob=unavailable,
                 ),
             ),
         )

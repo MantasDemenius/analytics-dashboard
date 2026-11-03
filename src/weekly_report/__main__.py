@@ -15,6 +15,7 @@ from pathlib import Path
 from weekly_report import mail, pdf
 from weekly_report.config import AppConfig, ConfigError, load_apps, load_report
 from weekly_report.model import (
+    AdMob,
     AppReport,
     Crashlytics,
     Failure,
@@ -27,6 +28,7 @@ from weekly_report.model import (
 from weekly_report.periods import Period, week_ending_by
 from weekly_report.render import render, summary, write
 from weekly_report.sources import (
+    admob,
     crashlytics,
     feedback,
     play_bucket,
@@ -147,7 +149,20 @@ def from_feedback(
     )
 
 
-def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
+def from_admob(
+    publisher: str, today: date, period: Period | None
+) -> AdMob | Unavailable | Failure:
+    return attempt(
+        admob.SOURCE, lambda: admob.admob(admob.reader(publisher), today, period)
+    )
+
+
+def app_report(
+    app: AppConfig,
+    today: date,
+    period: Period | None,
+    ads: AdMob | Unavailable | Failure,
+) -> AppReport:
     return AppReport(
         app=app.name,
         growth=from_bucket(app, today, period, play_bucket.growth),
@@ -156,17 +171,25 @@ def app_report(app: AppConfig, today: date, period: Period | None) -> AppReport:
         vitals=from_play_vitals(app, period),
         crashlytics=from_crashlytics(app, today, period),
         feedback=from_feedback(app, today, period),
+        admob=ads,
     )
 
 
 def build_report(
-    apps: list[AppConfig], today: date, requested: Period | None = None
+    apps: list[AppConfig],
+    today: date,
+    admob_publisher: str,
+    requested: Period | None = None,
 ) -> Report:
-    """With no `requested` range every source picks its own newest complete week."""
-    return Report(
-        period=requested or week_ending_by(today - timedelta(days=1)),
-        apps=tuple(app_report(app, today, requested) for app in apps),
-    )
+    """With no `requested` range every source picks its own newest complete week.
+
+    The AdMob account is one for all apps, so it is read once and every app shows it.
+    """
+    period = requested or week_ending_by(today - timedelta(days=1))
+    if not apps:
+        return Report(period, ())
+    ads = from_admob(admob_publisher, today, requested)
+    return Report(period, tuple(app_report(app, today, requested, ads) for app in apps))
 
 
 def email_report(report: Report, html: Path, chrome: Path | None, to: str) -> bool:
@@ -202,7 +225,9 @@ def main(argv: list[str] | None = None) -> None:
     except ConfigError as error:
         sys.exit(str(error))
 
-    report = build_report(apps, date.today(), requested_range(args))
+    report = build_report(
+        apps, date.today(), report_config.admob_publisher, requested_range(args)
+    )
     PDF_PATH.unlink(missing_ok=True)
     html = write(render(report), OUT_DIR)
     print("\n".join(summary(report)))

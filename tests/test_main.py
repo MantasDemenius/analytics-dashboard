@@ -88,12 +88,12 @@ class RequestedRangeTest(unittest.TestCase):
 
 class BuildReportTest(unittest.TestCase):
     def test_the_report_period_is_the_week_that_just_ended_by_default(self):
-        report = build_report([], today=date(2026, 11, 3))
+        report = build_report([], date(2026, 11, 3), "pub-0")
         self.assertEqual(report.period, Period(date(2026, 10, 26), date(2026, 11, 1)))
 
     def test_the_report_period_is_the_requested_range(self):
         requested = Period(date(2026, 10, 20), date(2026, 11, 2))
-        report = build_report([], today=date(2026, 11, 3), requested=requested)
+        report = build_report([], date(2026, 11, 3), "pub-0", requested)
         self.assertEqual(report.period, requested)
 
 
