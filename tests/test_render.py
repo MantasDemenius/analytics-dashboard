@@ -684,8 +684,8 @@ class DefaultCardsTest(unittest.TestCase):
                 "Net growth",
                 "Listing conversion",
                 "Store rating",
-                "Play crash rate",
                 "Crash free users",
+                "Play crash rate",
                 "Ad earnings",
             ],
         )
@@ -815,7 +815,7 @@ class StoreRatingCardTest(unittest.TestCase):
 
 class CrashRateCardTest(unittest.TestCase):
     def card(self, section):
-        return cards(renderer.render(report(app("first", vitals_section=section))))[5]
+        return cards(renderer.render(report(app("first", vitals_section=section))))[6]
 
     def test_shows_the_28_day_user_perceived_rate_as_of_the_last_day_with_its_change(
         self,
@@ -860,7 +860,7 @@ class CrashRateCardTest(unittest.TestCase):
     def test_the_email_line_says_the_rate_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-4],
+            lines[-3],
             "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
         )
 
@@ -950,7 +950,7 @@ class CrashFreeCardTest(unittest.TestCase):
     def card(self, section):
         return cards(
             renderer.render(report(app("first", crashlytics_section=section)))
-        )[6]
+        )[5]
 
     def test_shows_the_percent_with_two_decimals_and_the_previous_value(self):
         card = self.card(crashlytics(free=97.5, before=96.0))
@@ -1010,15 +1010,17 @@ class CrashFreeCardTest(unittest.TestCase):
     def test_the_email_line_says_the_percent_and_its_change(self):
         lines = renderer.summary(report(app("first")))
         self.assertEqual(
-            lines[-3],
+            lines[-4],
             "  Crash free users, 26 Oct to 1 Nov 2026: 97.50%, +1.50 pts, better",
         )
 
-    def test_the_at_a_glance_table_has_crash_free_users_before_new_feedback(self):
+    def test_the_at_a_glance_table_has_crash_free_users_before_the_play_crash_rate(
+        self,
+    ):
         glance = part(renderer.render(report(app("first"))), '<section class="glance"')
         self.assertEqual(
             re.findall(r"<th>(.*?)</th>", glance)[-4:-1],
-            ["Play crash rate", "Crash free users", "New feedback"],
+            ["Crash free users", "Play crash rate", "New feedback"],
         )
 
 
@@ -1316,8 +1318,8 @@ class DefaultGlanceTest(unittest.TestCase):
                 "App",
                 "Net growth",
                 "Store rating",
-                "Play crash rate",
                 "Crash free users",
+                "Play crash rate",
                 "New feedback",
                 "Ad earnings",
             ],
@@ -1337,8 +1339,8 @@ class DefaultGlanceTest(unittest.TestCase):
                 "first",
                 "  Net growth, 19 Oct to 25 Oct 2026: +49, +22 (+81.5%), better",
                 "  Store rating, 26 Oct to 1 Nov 2026: 3.67, +0.17 stars, better",
-                "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
                 "  Crash free users, 26 Oct to 1 Nov 2026: 97.50%, +1.50 pts, better",
+                "  Play crash rate, 19 Oct to 25 Oct 2026: 0.42%, +0.07 pts, worse",
                 "  New feedback, 26 Oct to 1 Nov 2026: 5, +2 (+66.7%)",
                 "  Ad earnings, 26 Oct to 1 Nov 2026: 12.34 USD, +2.34 (+23.4%), better",
             ],
