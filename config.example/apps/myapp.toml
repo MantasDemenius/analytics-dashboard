@@ -1,0 +1,20 @@
+# Copy to config/apps/<app>.toml, one file per app; scripts/setup_app.sh <app> writes it.
+# The file name without .toml is the app's name in the report.
+
+# The app's Firebase project ID.
+firebase_project = "myapp-12345"
+
+# The Android app's Firebase app ID.
+firebase_app_id = "1:123456789012:android:0123456789abcdef"
+
+# The app's package name.
+package = "com.example.myapp"
+
+# Play Console's report bucket, without gs://.
+play_bucket = "pubsite_prod_rev_01234567890123456789"
+
+# The Firestore collection the app writes feedback to.
+feedback_collection = "feedback"
+
+# The app's read only service account key.
+service_account_key = "config/apps/myapp-service-account.json"

@@ -1,0 +1,10 @@
+# Copy to config/report.toml. Shared by every app; scripts/setup_app.sh writes it.
+
+# Where the weekly report is emailed.
+recipient = "author@example.com"
+
+# The AdMob account the AdMob sign-in must belong to: "pub-" and 16 digits.
+admob_publisher = "pub-XXXXXXXXXXXXXXXX"
+
+# Optional: Chrome's full path, when it is not at a standard install path.
+# chrome = "D:/Apps/Chrome/chrome.exe"
