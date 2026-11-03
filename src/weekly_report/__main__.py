@@ -106,6 +106,7 @@ APP_SECTIONS: dict[str, tuple[str, SectionBuilder]] = {
         play_reviews.SOURCE,
         lambda app, today, period: play_reviews.reviews(
             play_bucket.bucket_reader(app),
+            play_bucket.bucket_updated(app),
             play_reviews.api_reader(app),
             app.package,
             today,

@@ -125,8 +125,15 @@ def api_of(*raw):
     return lambda: list(raw)
 
 
-def run(files, api=no_api, period=None, today=TODAY):
-    return play_reviews.reviews(Bucket(files).read, api, PACKAGE, today, period)
+def run(files, api=no_api, period=None, today=TODAY, updated=None):
+    return play_reviews.reviews(
+        Bucket(files).read,
+        lambda path: (updated or {}).get(path),
+        api,
+        PACKAGE,
+        today,
+        period,
+    )
 
 
 class ReviewsPathTest(unittest.TestCase):
@@ -555,6 +562,37 @@ class ReportLagTest(unittest.TestCase):
 
     def test_a_report_with_no_rows_claims_no_lag(self):
         self.assertIsNone(run(october()).coverage.data_to)
+
+    def test_a_quiet_app_whose_file_was_written_after_the_range_has_no_data_to(self):
+        files = october(csv_row("2026-10-20", 5))
+        written = {reviews_path(PACKAGE, date(2026, 10, 1)): date(2026, 11, 2)}
+        self.assertIsNone(run(files, updated=written).coverage.data_to)
+
+    def test_a_file_written_inside_the_range_reaches_the_day_before_it(self):
+        files = october(csv_row("2026-10-20", 5))
+        written = {reviews_path(PACKAGE, date(2026, 10, 1)): date(2026, 10, 30)}
+        section = run(files, updated=written)
+        self.assertEqual(section.coverage.data_to, date(2026, 10, 29))
+
+    def test_the_newest_file_the_range_touches_decides_how_fresh_the_report_is(self):
+        files = october(csv_row("2026-10-20", 5)) | november()
+        written = {
+            reviews_path(PACKAGE, date(2026, 10, 1)): date(2026, 10, 28),
+            reviews_path(PACKAGE, date(2026, 11, 1)): date(2026, 11, 2),
+        }
+        self.assertIsNone(run(files, updated=written).coverage.data_to)
+
+    def test_an_old_file_does_not_pull_the_reach_back_from_the_newest_row(self):
+        files = october(csv_row("2026-10-30", 5))
+        written = {reviews_path(PACKAGE, date(2026, 10, 1)): date(2026, 10, 28)}
+        section = run(files, updated=written)
+        self.assertEqual(section.coverage.data_to, date(2026, 10, 30))
+
+    def test_the_apis_window_still_floors_the_reach(self):
+        files = october(csv_row("2026-10-20", 5))
+        written = {reviews_path(PACKAGE, date(2026, 10, 1)): date(2026, 10, 21)}
+        section = run(files, updated=written)
+        self.assertEqual(section.coverage.data_to, date(2026, 10, 27))
 
 
 class AllPagesTest(unittest.TestCase):

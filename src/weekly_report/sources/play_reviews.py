@@ -16,7 +16,7 @@ from googleapiclient.discovery import build
 from weekly_report.config import AppConfig
 from weekly_report.model import Label, Metric, Review, Reviews, Unavailable
 from weekly_report.periods import Period, week_ending_by
-from weekly_report.sources.play_bucket import Reader, memoized
+from weekly_report.sources.play_bucket import Reader, UpdatedReader, memoized
 from weekly_report.sources.shared import (
     SourceError,
     reached,
@@ -189,16 +189,28 @@ def uncovered_days(
     return tuple(missing)
 
 
-def report_reach(period: Period, today: date, from_csv: list[CsvReview]) -> date:
+def newest_write(
+    updated_on: UpdatedReader, package: str, period: Period
+) -> date | None:
+    """The day the newest report file `period` touches was last written."""
+    written = [updated_on(reviews_path(package, month)) for month in period.months()]
+    return max((day for day in written if day), default=None)
+
+
+def report_reach(
+    period: Period, today: date, from_csv: list[CsvReview], written: date | None
+) -> date:
     """The last day the reviews report is known to cover.
 
     The report is trusted for days older than the API's window; for newer days it reaches the
-    newest day any of its rows names. A report with no rows claims no lag.
+    newest day any of its rows names, or the day before its file was last written, whichever is
+    later, since a quiet app has no rows for the latest days. A report with no rows claims no lag.
     """
     if not from_csv:
         return period.end
     newest = max(max(each.submitted.date(), each.updated.date()) for each in from_csv)
-    return max(newest, today - timedelta(days=API_DAYS))
+    before_write = written - timedelta(days=1) if written else newest
+    return max(newest, before_write, today - timedelta(days=API_DAYS))
 
 
 def merged_cards(
@@ -263,6 +275,7 @@ def merged_cards(
 
 def reviews(
     read: Reader,
+    updated_on: UpdatedReader,
     list_reviews: ApiReader,
     package: str,
     today: date,
@@ -276,7 +289,8 @@ def reviews(
         read, package, Period(period.trend_start() - window, period.end)
     )
     uncovered = uncovered_days(period, today, absent)
-    coverage = reached(SOURCE, period, report_reach(period, today, from_csv))
+    written = newest_write(updated_on, package, period)
+    coverage = reached(SOURCE, period, report_reach(period, today, from_csv, written))
     if (
         isinstance(coverage, Unavailable)
         or sum(gap.length for gap in uncovered) >= period.length

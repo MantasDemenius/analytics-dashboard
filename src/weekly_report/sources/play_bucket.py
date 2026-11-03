@@ -26,6 +26,7 @@ LOOKBACK_DAYS = 31
 SCOPE = "https://www.googleapis.com/auth/devstorage.read_only"
 
 type Reader = Callable[[str], bytes | None]
+type UpdatedReader = Callable[[str], date | None]
 
 
 def installs_path(package: str, month: date) -> str:
@@ -148,11 +149,26 @@ def listing(
     )
 
 
-def bucket_reader(app: AppConfig) -> Reader:
-    bucket = storage.Client(
+def bucket_of(app: AppConfig) -> storage.Bucket:
+    return storage.Client(
         project=app.firebase_project,
         credentials=service_account_credentials(app, SCOPE),
     ).bucket(app.play_bucket)
+
+
+def bucket_updated(app: AppConfig) -> UpdatedReader:
+    """The day, in UTC, each file in the bucket was last written, or None for an absent file."""
+    bucket = bucket_of(app)
+
+    def updated(path: str) -> date | None:
+        blob = bucket.get_blob(path)
+        return blob.updated.date() if blob else None
+
+    return updated
+
+
+def bucket_reader(app: AppConfig) -> Reader:
+    bucket = bucket_of(app)
 
     def read(path: str) -> bytes | None:
         try:

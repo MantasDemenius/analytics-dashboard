@@ -187,10 +187,11 @@ Built in `sources/play_reviews.py` (2026-11-03):
   this range". The API is not asked when the range ended before its window.
 - **Lagging reviews CSV:** its star-only ratings come from no other source, so the section shows
   "data to <date>" like the bucket sections do. The CSV is trusted for days older than the API's
-  window; for newer days it reaches the newest submit or last update day any of its rows names,
-  and the comparison is cut to the same days. A small app with no rating for days therefore
-  shows an earlier "data to" than the CSV really has, since a quiet day and a late file look the
-  same; that errs towards saying less. A range starting after that day is "not available for
+  window; for newer days it reaches the later of the newest submit or last update day any of its
+  rows names and the day before the file's own last write (the GCS object's `updated` time, read
+  in the thin fetch), and the comparison is cut to the same days. The write time is what stops a
+  quiet app, with no rating for days, from showing "data to" every week: a quiet day and a late
+  file look the same in the rows alone. A range starting after that day is "not available for
   this range".
 
 ## Play vitals source
