@@ -482,11 +482,21 @@ src/weekly_report/
   config.py          reads config/apps/*.toml and config/report.toml
   periods.py         picks each source's period
   model.py           plain dataclasses: Metric(value, previous, series), sections, AppReport
-  sources/           play_bucket.py, play_api.py, crashlytics.py, feedback.py, admob.py
-  render.py          Jinja2 template to one HTML file, Chart.js inlined
+  sources/
+    shared.py        SourceError, how far a source reaches, service account sign in
+    play_bucket.py   Play Console exports: installs, uninstalls, listing
+    play_reviews.py  Play reviews CSV and the reviews API
+    play_vitals.py   Play Developer Reporting: crash and ANR rates
+    crashlytics.py   Crashlytics reports
+    feedback.py      Firestore user feedback
+    admob.py         AdMob network reports
+  formatting.py      how numbers and changes are written, and the texts that stand in
+  headlines.py       Headline, the CARDS, GLANCE and SECTIONS registries, cells and figures
+  charts.py          Chart.js configurations as plain dicts
+  render.py          Jinja2 template to one HTML file, Chart.js inlined, and the text summary
   pdf.py             headless Chrome, then a page count check
   mail.py            Gmail send
-  templates/report.html.j2
+  templates/report.html.j2, macros.html.j2, sections/*.html.j2 (one per section)
   vendor/chart.umd.min.js   Chart.js 4.4.1, MIT, vendored (agreed 2026-11-03)
 ```
 
